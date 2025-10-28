@@ -19,6 +19,34 @@ class CoordinatorOpenAISummaryController extends Controller
                     $data = $decoded;
                 }
             }
+            // Support AI weekly-task suggestions: type=chair_weekly_tasks_json
+            $type = $request->input('type') ?: ($data['type'] ?? null);
+            if ($type === 'chair_weekly_tasks_json' && isset($data['coordinators'])) {
+                $coordinators = is_array($data['coordinators']) ? $data['coordinators'] : [];
+                $brief = [];
+                foreach ($coordinators as $c) {
+                    $brief[] = [
+                        'id' => (string)($c['id'] ?? ''),
+                        'label' => (string)($c['label'] ?? ''),
+                        'gaps' => array_values(array_unique(array_filter((array)($c['gaps'] ?? []))))
+                    ];
+                }
+                $instruction = "You are an expert internship coach. For each coordinator below, generate 3-5 concrete weekly task suggestions to address their gap POs (POs with zero). Tasks must be short and actionable and MUST include the PO code (e.g., PO2). Return STRICT JSON ONLY in the exact shape {\"tasksPerCoordinator\":{\"<id>\":[\"task1\",\"task2\"]}} with no extra prose.";
+                $prompt = $instruction."\n\nCOORDINATORS:\n".json_encode($brief, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
+                $resp = $this->callOpenAI($prompt);
+                if ($resp['success']) {
+                    $content = $resp['summary'];
+                    $parsed = json_decode($content, true);
+                    if (!is_array($parsed) && preg_match('/\{[\s\S]*\}/', $content, $m)) {
+                        $parsed = json_decode($m[0], true);
+                    }
+                    if (is_array($parsed) && isset($parsed['tasksPerCoordinator']) && is_array($parsed['tasksPerCoordinator'])) {
+                        return response()->json(['tasksPerCoordinator' => $parsed['tasksPerCoordinator']], 200);
+                    }
+                    return response()->json(['error' => 'AI returned unexpected format'], 502);
+                }
+                return response()->json(['error' => 'AI request failed'], 502);
+            }
             // Also support GET with base64/json in query param
             if (!$data && $request->query('data')) {
                 $raw = $request->query('data');

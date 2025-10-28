@@ -8,10 +8,13 @@ import { formatDate } from "../../_global/utilities/formatDate";
 import { formatCreatedAt } from "../../_global/utilities/formatCreatedAt";
 import DOMPurify from "dompurify";
 import Modal from "../../components/modals/Modal";
+import { pdf, PDFDownloadLink } from "@react-pdf/renderer";
+import GenerateWeeklyAccomplishmentReport from "../../components/letters/GenerateWeeklyAccomplishmentReport";
 
 const WeeklyReportPresenter = ({
   loading,
   rows = [],
+  header = {},
 
   // viewWeeklyRecordPDF = () => {},
   /** Form Props */
@@ -48,6 +51,10 @@ const WeeklyReportPresenter = ({
   /** Delete Props */
   deleteWeeklyTimeRecord,
 }) => {
+  const documentNode = (
+    <GenerateWeeklyAccomplishmentReport weeklyEntries={rows} header={header} />
+  );
+
   return (
     <div>
       <Loader loading={loading} />
@@ -117,15 +124,18 @@ const WeeklyReportPresenter = ({
         </h2>
 
         <div className="flex items-center justify-between my-3">
-          <div className="flex items-center space-x-2">
-            {/* <Button
-              type="button"
-              onClick={viewWeeklyRecordPDF}
-              className="text-sm flex items-center justify-center gap-2 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded"
-            >
-              View Weekly Accomplishment as PDF
-            </Button> */}
-          </div>
+        <div className="flex items-center space-x-2">
+          <PDFDownloadLink document={documentNode} fileName="weekly-accomplishment-report.pdf">
+            {({ loading }) => (
+              <Button
+                type="button"
+                className={`text-sm flex items-center justify-center gap-2 px-3 py-2 ${loading ? 'bg-gray-500 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'} text-white rounded`}
+              >
+                {loading ? 'Preparing PDF…' : 'Download PDF'}
+              </Button>
+            )}
+          </PDFDownloadLink>
+        </div>
 
           <Button
             onClick={() => setIsAddOpen(!isAddOpen)}

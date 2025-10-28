@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { useLoaderData } from "react-router-dom"; // Hook to load route data
 import axiosClient from "../../api/axiosClient";
 import { FaUserGraduate, FaBuilding, FaUsers, FaBook } from "react-icons/fa"; // Import icons
@@ -19,6 +19,91 @@ export default function ChairpersonDashboardPage() {
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [exportSnapshot, setExportSnapshot] = useState(null);
+  const summaryRef = useRef(null);
+
+  const handleDownloadPDF = () => {
+    try {
+      if (!summaryRef.current) return;
+      const content = summaryRef.current.innerHTML;
+      const coord = exportSnapshot?.coordinatorId || selectedCoordinatorId || '';
+      const wk = exportSnapshot?.week ?? selectedWeek;
+      const when = new Date().toLocaleString();
+      const title = `Chair_Summary_${coord}_week_${wk || 'overall'}`;
+      const html = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${title}</title>
+    <style>
+      @page { size: A4; margin: 16mm; }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color: #111827; }
+      h1,h2,h3,h4,h5 { margin: 0 0 8px; }
+      .header { margin-bottom: 16px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }
+      .meta { font-size: 12px; color: #374151; }
+      .section { margin-top: 12px; }
+      .card, .bg-white { background: #fff !important; }
+      .border { border: 1px solid #e5e7eb !important; }
+      .rounded, .rounded-lg { border-radius: 8px !important; }
+      .p-4, .px-4, .py-4 { padding: 16px !important; }
+      .mb-3 { margin-bottom: 12px !important; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; }
+      .badge { border: 1px solid #e5e7eb; border-radius: 4px; padding: 2px 6px; }
+      .text-muted { color: #6b7280; }
+      /* Only show .print-only on print, hide .screen-only */
+      .print-only { display: none !important; }
+      .screen-only { display: block; }
+      @media print {
+        .print-only { display: block !important; }
+        .screen-only { display: none !important; }
+      }
+    </style>
+    <script>
+      window.addEventListener('load', function() {
+        setTimeout(function(){ try { window.print(); } catch(e){} }, 200);
+      });
+      window.onafterprint = function(){ try { window.close(); } catch(e){} };
+    </script>
+  </head>
+  <body>
+    <div class="header">
+      <h2>Chairperson Summary</h2>
+      <div class="meta">Coordinator ID: ${coord} • Week: ${wk || 'overall'} • Exported: ${when}</div>
+    </div>
+    <div class="section">
+      ${content}
+    </div>
+  </body>
+</html>`;
+
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const w = window.open(url, '_blank', 'noopener,noreferrer');
+      if (!w) {
+        const iframe = document.createElement('iframe');
+        iframe.style.position = 'fixed';
+        iframe.style.right = '0';
+        iframe.style.bottom = '0';
+        iframe.style.width = '0';
+        iframe.style.height = '0';
+        iframe.style.border = '0';
+        iframe.srcdoc = html;
+        iframe.onload = () => {
+          try {
+            iframe.contentWindow.focus();
+            iframe.contentWindow.print();
+          } catch (_) {}
+          setTimeout(() => { try { document.body.removeChild(iframe); } catch (_) {} }, 1000);
+        };
+        document.body.appendChild(iframe);
+      } else {
+        // Revoke URL after some time
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch(_){} }, 10000);
+      }
+    } catch (_) { /* no-op */ }
+  };
 
   useEffect(() => {
     let didCancel = false;
@@ -233,6 +318,7 @@ export default function ChairpersonDashboardPage() {
     },
   ];
 
+
   return (
     <>
       <Page>
@@ -316,17 +402,31 @@ export default function ChairpersonDashboardPage() {
                 >
                   Refresh
                 </button>
+              
+              <button
+                onClick={handleDownloadPDF}
+                disabled={!selectedCoordinatorId || (!selectedWeek && selectedWeek !== "overall")}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={!selectedCoordinatorId ? "Select a coordinator first" : (!selectedWeek && selectedWeek !== "overall" ? "Select a week or Overall" : "")}
+              >
+                Download PDF
+              </button>
               </div>
             </div>
 
             {/* Summary Block - only when both coordinator and week are selected */}
             {!!selectedCoordinatorId && (selectedWeek === "overall" || !!selectedWeek) && (
-              <ChairpersonSummary 
-                coordinatorId={selectedCoordinatorId} 
-                week={selectedWeek} 
-                refreshTrigger={refreshTrigger}
-              />
+              <div ref={summaryRef}>
+                <ChairpersonSummary 
+                  coordinatorId={selectedCoordinatorId} 
+                  week={selectedWeek} 
+                  refreshTrigger={refreshTrigger}
+                  onExportReady={setExportSnapshot}
+                />
+              </div>
             )}
+
+          
 
             {/* Coordinators section removed per requirement */}
           </div>

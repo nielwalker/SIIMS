@@ -1,5 +1,6 @@
 import { useState } from "react";
 import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import { postRequest } from "../../api/apiHelpers";
 import { useLoaderData } from "react-router-dom";
 import Loader from "../../components/common/Loader";
@@ -188,16 +189,22 @@ const StudentWeeklyAccomplishmentPage = () => {
     doc.setFontSize(10);
     doc.text(centerText, pageWidth / 2, margin + 15, { align: "center" });
 
+    // Fetch identity for header lines
+    const studentName = (initial_weekly_reports?.student?.name) || (initial_weekly_reports?.student_name) || "Student";
+    const companyName = (initial_weekly_reports?.company?.name) || (initial_weekly_reports?.company_name) || "Company";
+    const coordinatorName = (initial_weekly_reports?.coordinator?.name) || (initial_weekly_reports?.coordinator_name) || "Coordinator";
+    const chairName = (initial_weekly_reports?.chairperson?.name) || (initial_weekly_reports?.chairperson_name) || "Chairperson";
+
     // Metadata and Title
     doc.setFont("helvetica", "normal");
     doc.setFontSize(12);
     doc.text("Weekly Accomplishment Report", margin, margin + 40);
     doc.setFontSize(10);
     doc.text(periodText, margin, margin + 45);
-
-    doc.text("Name: Jane Smith", margin, margin + 50);
-    doc.text("Company: Mindanao Tech Solutions", margin, margin + 55);
-    doc.text("Unit/Office/Department: IT Department", margin, margin + 60);
+    doc.text(`Student: ${studentName}`, margin, margin + 50);
+    doc.text(`Company: ${companyName}`, margin, margin + 55);
+    doc.text(`Coordinator: ${coordinatorName}`, margin, margin + 60);
+    doc.text(`Chairperson: ${chairName}`, margin, margin + 65);
 
     // Define header and table data
     const header = [
@@ -219,10 +226,10 @@ const StudentWeeklyAccomplishmentPage = () => {
     ]);
 
     // Generate table
-    doc.autoTable({
+    autoTable(doc, {
       head: [header],
       body: tableData,
-      startY: margin + 70,
+      startY: margin + 75,
       margin: { top: margin },
       styles: {
         fontSize: 8,

@@ -164,6 +164,8 @@ class ChairpersonStudentController extends Controller
             'user_id' => $user->id,
             'program_id' => $validatedCredentials['program_id'],
             'coordinator_id' => $validatedCredentials['coordinator_id'],
+            // Allow optional direct company assignment on create
+            'company_id' => $validatedCredentials['company_id'] ?? null,
             'age' => $validatedCredentials['age'],
             'date_of_birth' => $validatedCredentials['date_of_birth'],
         ]);

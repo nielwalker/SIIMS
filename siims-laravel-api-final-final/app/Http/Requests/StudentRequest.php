@@ -34,7 +34,9 @@ class StudentRequest extends UserRequest
             "age" => ['nullable', 'integer'],
             "date_of_birth" => ['nullable', 'date'],
             "program_id" => ['required', 'integer', 'exists:programs,id'],
-            "coordinator_id" => ['required', 'string', 'exists:coordinators,id']
+            "coordinator_id" => ['required', 'string', 'exists:coordinators,id'],
+            // Optional company assignment at creation/update
+            "company_id" => ['nullable', 'integer', 'exists:companies,id'],
         ]);
 
         /**

@@ -20,6 +20,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [studentSummary, setStudentSummary] = useState("");
+  const [recommendations, setRecommendations] = useState([]);
   const [totalHours, setTotalHours] = useState(0);
 
   // Open location and navigation
@@ -366,6 +367,31 @@ const ViewReportsPage = ({ authorizeRole }) => {
           }
         }
         setStudentSummary(s || "No data available.");
+        try {
+          // Lightweight PO keyword analysis to guide recommendations
+          const lower = String(s || "").toLowerCase();
+          const poHints = [
+            { po: 'PO1', kws: ['math','algorithm','compute','analysis'], tip: 'Practice algorithmic thinking and structured analysis of tasks.' },
+            { po: 'PO2', kws: ['standard','guideline','best practice','policy'], tip: 'Adopt team/project standards and document conventions used.' },
+            { po: 'PO3', kws: ['troubleshoot','diagnose','root cause','problem'], tip: 'Apply root-cause analysis; log problems and resolutions.' },
+            { po: 'PO4', kws: ['user','requirement','stakeholder','ux'], tip: 'Clarify user needs; validate with quick feedback sessions.' },
+            { po: 'PO5', kws: ['design','implement','evaluate','test','build'], tip: 'Include evaluation criteria and testing in deliverables.' },
+            { po: 'PO6', kws: ['security','safety','privacy','environment'], tip: 'Call out security/privacy considerations in your work notes.' },
+            { po: 'PO7', kws: ['tool','framework','library','platform'], tip: 'Leverage appropriate tools and record why they were chosen.' },
+            { po: 'PO8', kws: ['team','collaborat','leader','group'], tip: 'Plan pair work; rotate roles to build leadership and teamwork.' },
+            { po: 'PO9', kws: ['plan','schedule','timeline','milestone'], tip: 'Maintain a simple weekly plan with milestones and risks.' },
+            { po: 'PO10', kws: ['communicat','present','document','report'], tip: 'Improve clarity in weekly reports; add concise summaries.' },
+            { po: 'PO11', kws: ['impact','society','organization','community'], tip: 'Reflect on how your work benefits users/organization.' },
+            { po: 'PO12', kws: ['ethic','compliance','legal'], tip: 'Note ethical/compliance checks (e.g., data handling).' },
+            { po: 'PO13', kws: ['learn','self-study','course','tutorial'], tip: 'Set a weekly learning goal and document outcomes.' },
+            { po: 'PO14', kws: ['research','experiment','study'], tip: 'Run small experiments; compare approaches with brief notes.' },
+            { po: 'PO15', kws: ['filipino','heritage','culture'], tip: 'Consider local context and accessibility in solutions.' },
+          ];
+          const missing = poHints.filter(h => !h.kws.some(k => lower.includes(k))).slice(0, 6);
+          setRecommendations(missing.map(m => ({ po: m.po, tip: m.tip })));
+        } catch {
+          setRecommendations([]);
+        }
       } catch (e) {
         setStudentSummary("No data available.");
       } finally {
@@ -468,6 +494,22 @@ const ViewReportsPage = ({ authorizeRole }) => {
         {selectedStudentId && (
           <div className="bg-white border rounded p-4 min-h-[80px] text-gray-800 whitespace-pre-wrap break-words mb-4">
             {summaryLoading ? "Analyzing…" : (studentSummary || "No data available.")}
+          </div>
+        )}
+
+        {/* Recommendations for Improvement - below the summary; narrative format */}
+        {selectedStudentId && recommendations.length > 0 && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded p-4 mb-4">
+            <h4 className="text-md font-semibold text-emerald-900 mb-2">Recommendations for Improvement</h4>
+            {(() => {
+              const codes = recommendations.map(r => r.po).join(', ');
+              const plan = recommendations.map(r => `For ${r.po}, ${r.tip}`).join(' ');
+              return (
+                <p className="text-sm text-emerald-800 leading-relaxed">
+                  Given this week’s outcomes, please prioritize the following program outcomes: {codes}. {plan} Coordinate with the student to embed these goals in next week’s plan and reflections.
+                </p>
+              );
+            })()}
           </div>
         )}
 

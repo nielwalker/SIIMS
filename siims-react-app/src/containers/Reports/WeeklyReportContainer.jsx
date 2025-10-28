@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import WeeklyReportPresenter from "./WeeklyReportPresenter";
 import useForm from "./hooks/useForm";
 import { addWar, deleteWarByID, getAllWar, updateWar } from "./Api";
+import { getRequest } from "../../api/apiHelpers";
 
 const WeeklyReportContainer = ({ authorizeRole }) => {
   /**
@@ -69,6 +70,14 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
    */
   const [rows, setRows] = useState([]);
 
+  // Header info for PDF (student, company, coordinator, chairperson)
+  const [headerInfo, setHeaderInfo] = useState({
+    studentName: "",
+    companyName: "",
+    coordinatorName: "",
+    chairpersonName: "",
+  });
+
   /**
    *
    *
@@ -78,6 +87,7 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
    */
   useEffect(() => {
     getWeeklyRecords();
+    fetchIdentity();
   }, []);
 
   /**
@@ -94,6 +104,31 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
       setRows: setRows,
       authorizeRole: authorizeRole,
     });
+  };
+
+  const fetchIdentity = async () => {
+    try {
+      const profile = await getRequest({ url: "/api/v1/profiles/student" });
+      const user = profile?.user || {};
+      const student = profile?.student || {};
+      const studentUser = student?.user || user;
+      const studentName = [studentUser?.first_name, studentUser?.last_name].filter(Boolean).join(" ") || profile?.name || "";
+
+      const company = student?.company || profile?.company || {};
+      const companyName = company?.name || "";
+
+      const coordinator = student?.coordinator || profile?.coordinator || {};
+      const coordUser = coordinator?.user || {};
+      const coordinatorName = [coordUser?.first_name, coordUser?.last_name].filter(Boolean).join(" ") || "";
+
+      const program = student?.program || profile?.program || {};
+      const chair = program?.chairperson || {};
+      const chairUser = chair?.user || {};
+      const chairpersonName = [chairUser?.first_name, chairUser?.last_name].filter(Boolean).join(" ") || "";
+      setHeaderInfo({ studentName, companyName, coordinatorName, chairpersonName });
+    } catch (_) {
+      setHeaderInfo({ studentName: "", companyName: "", coordinatorName: "", chairpersonName: "" });
+    }
   };
 
   const addWeeklyTimeRecord = async (e) => {
@@ -164,6 +199,7 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
     <WeeklyReportPresenter
       loading={loading}
       rows={rows}
+      header={headerInfo}
       /** Form Props */
       formData={formData}
       handleInputChange={handleInputChange}

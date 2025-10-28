@@ -61,6 +61,19 @@ class DashboardRepository implements DashboardRepositoryInterface
         $totalPrograms = $this->programRepositoryInterface->getTotalPrograms();
         $totalWorkPosts = $this->workPostRepositoryInterface->getTotalWorkPosts();
 
+        // Role-aware total students:
+        // - Coordinator: count only students assigned to this coordinator
+        // - Chairperson/Admin/Dean: keep existing global/program/college behavior as implemented by getTotalStudents()
+        $requestedBy = $filters['requestedBy'] ?? '';
+        $totalStudents = $this->studentRepositoryInterface->getTotalStudents();
+        if ($this->authUser && $this->authUser->hasRole('coordinator') && $requestedBy === 'coordinator') {
+            // Use repository get() which already scopes by coordinator when requestedBy='coordinator'
+            $totalStudents = $this->studentRepositoryInterface->get([
+                'requestedBy' => 'coordinator',
+                'searchTerm' => ''
+            ])->count();
+        }
+
         // Intialize empty associative array
         $data = [
             'total_colleges' => $totalColleges,
@@ -68,7 +81,7 @@ class DashboardRepository implements DashboardRepositoryInterface
             'total_offices' => $totalOffices,
             'total_work_posts' =>  $totalWorkPosts,
             'total_users' => $this->userRepositoryInterface->getTotalUsers(),
-            'total_students' => $this->studentRepositoryInterface->getTotalStudents(),
+            'total_students' => $totalStudents,
             'total_companies' => $this->companyRepositoryInterface->getTotalCompanies(),
             'total_deans' => $this->deanRepositoryInterface->getTotalDeans(),
             'total_supervisors' => $this->supervisorRepositoryInterface->getTotalSupervisors(),

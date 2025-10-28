@@ -900,6 +900,8 @@ class StudentController extends UserController
             "user_id" => $user->id,
             "program_id" => $validated['program_id'],
             "coordinator_id" => $coordinator->id ?? null,
+            // Persist optional direct company assignment if provided
+            "company_id" => $validated['company_id'] ?? null,
             "age" => $validated['age'],
             "date_of_birth" => $validated['date_of_birth'],
         ]);

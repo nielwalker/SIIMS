@@ -154,7 +154,28 @@ const ManageWarPage = ({ authorizeRole }) => {
    * Function that calls the Weekly Report PDF Format
    */
   const callWeeklyReport = () => {
-    return <GenerateWeeklyAccomplishmentReport weeklyEntries={rows} />;
+    const studentName = application?.student?.user?.first_name
+      ? `${application.student.user.first_name} ${application.student.user.last_name || ""}`.trim()
+      : (application?.student_name || "");
+    const companyName = application?.work_post?.office?.company?.name || application?.company?.name || application?.company_name || "";
+    const coordinatorName = application?.coordinator?.user?.first_name
+      ? `${application.coordinator.user.first_name} ${application.coordinator.user.last_name || ""}`.trim()
+      : (application?.coordinator_name || "");
+    const chairpersonName = application?.program?.chairperson?.user?.first_name
+      ? `${application.program.chairperson.user.first_name} ${application.program.chairperson.user.last_name || ""}`.trim()
+      : (application?.chairperson_name || "");
+
+    return (
+      <GenerateWeeklyAccomplishmentReport
+        weeklyEntries={rows}
+        header={{
+          studentName,
+          companyName,
+          coordinatorName,
+          chairpersonName,
+        }}
+      />
+    );
   };
 
   /**

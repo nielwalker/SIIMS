@@ -27,27 +27,61 @@ class StudentProfileController extends ProfileController
      */
     public function getProfile()
     {
+        // Load authenticated user with nullable-safe relations
+        $authUser = Auth::user()->load([
+            'student.company',
+            'student.coordinator', // coordinator may already be a User model
+            'student.program.college',
+            'student.program.chairperson', // chairperson may already be a User model
+        ]);
 
-        // Get Student User Info
-        $user = $this->getGeneralInfo();
+        $student = $authUser->student; // may be null
 
-
-        // Get Certificates
-        $certificates = Certificate::where('student_id', $user->id)->get();
-
-        // Merge Array Variable
-        $mergedArray = [
-            "program" => $user->student->program->name,
-            "college" => $user->student->program->college->name,
-            "educations" => $this->educationController->getAllEducations()->toArray(request()),
-            "work_experiences" => $this->workExperienceController->getAllWorkExperiences()->toArray(request()),
-            "certificates" => $certificates,
+        // Build a robust payload that tolerates missing relations
+        $payload = [
+            'user' => [
+                'id' => $authUser->id,
+                'first_name' => $authUser->first_name,
+                'last_name' => $authUser->last_name,
+                'email' => $authUser->email,
+            ],
+            'student' => $student ? [
+                'company' => $student->company ? [
+                    'name' => $student->company->name,
+                ] : null,
+                'coordinator' => $student->coordinator ? (function() use ($student) {
+                    $coord = $student->coordinator;
+                    // If model has a user() relation, use it, else assume it's already a User
+                    $coordUser = method_exists($coord, 'user') ? optional($coord->user) : optional($coord);
+                    return [
+                        'user' => [
+                            'first_name' => $coordUser->first_name,
+                            'last_name' => $coordUser->last_name,
+                        ],
+                    ];
+                })() : null,
+                'program' => $student->program ? [
+                    'name' => $student->program->name,
+                    'college' => [ 'name' => optional($student->program->college)->name ],
+                    'chairperson' => $student->program->chairperson ? (function() use ($student) {
+                        $chair = $student->program->chairperson;
+                        $chairUser = method_exists($chair, 'user') ? optional($chair->user) : optional($chair);
+                        return [
+                            'user' => [
+                                'first_name' => $chairUser->first_name,
+                                'last_name' => $chairUser->last_name,
+                            ],
+                        ];
+                    })() : null,
+                ] : null,
+            ] : null,
         ];
 
-        // Merged Array
-        $mergedUser = array_merge($user->toArray(request()), $mergedArray);
+        // Also include education/work experience lists (optional)
+        $payload['educations'] = $this->educationController->getAllEducations()->toArray(request());
+        $payload['work_experiences'] = $this->workExperienceController->getAllWorkExperiences()->toArray(request());
+        $payload['certificates'] = Certificate::where('student_id', $authUser->id)->get();
 
-        // Return response
-        return $this->jsonResponse($mergedUser, 200);
+        return $this->jsonResponse($payload, 200);
     }
 }

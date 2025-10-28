@@ -112,7 +112,7 @@ const WeeklyRecordModalForm = ({
             onChange={(value) =>
               handleInputChange({ target: { name: "tasks", value } })
             }
-            className="bg-white dark:bg-gray-800 text-white"
+            className="bg-white dark:bg-gray-800 text-black"
           />
           {validationErrors.tasks && (
             <Text className="text-red-500 text-sm mt-1">
@@ -132,7 +132,7 @@ const WeeklyRecordModalForm = ({
             onChange={(value) =>
               handleInputChange({ target: { name: "learnings", value } })
             }
-            className="bg-white dark:bg-gray-800 text-white"
+            className="bg-white dark:bg-gray-800 text-black"
           />
           {validationErrors.learnings && (
             <Text className="text-red-500 text-sm mt-1">
@@ -155,7 +155,7 @@ const WeeklyRecordModalForm = ({
               name="no_of_hours"
               value={formData.no_of_hours}
               onChange={handleInputChange}
-              className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-black dark:focus:ring-blue-500 dark:focus:border-blue-500"
+              className="bg-gray-50 border border-gray-300 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
               placeholder="1"
               required
             />

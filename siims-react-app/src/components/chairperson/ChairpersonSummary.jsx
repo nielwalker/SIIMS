@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axiosClient from "../../api/axiosClient";
 
-export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger }) {
+export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger, onExportReady }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState("");
@@ -11,6 +11,7 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
   const [hitList, setHitList] = useState([]);
   const [notHitList, setNotHitList] = useState([]);
   const [otherActivities, setOtherActivities] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
 
   const PO_DESCRIPTIONS = useMemo(() => ([
     "Apply knowledge of computing, science, and mathematics.",
@@ -865,6 +866,79 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coordinatorId, week, refreshTrigger]);
 
+  // Notify parent with the latest exportable data snapshot
+  useEffect(() => {
+    if (typeof onExportReady !== 'function') return;
+    const stripHtml = (t) => String(t || "")
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>')
+      .replace(/\s+/g, ' ')
+      .trim();
+    let cleanSummary = stripHtml(summary);
+    if (!cleanSummary) {
+      try {
+        const tmp = document.createElement('div');
+        tmp.innerHTML = String(summary || '');
+        cleanSummary = String(tmp.textContent || tmp.innerText || '').replace(/\s+/g, ' ').trim();
+      } catch {}
+    }
+    onExportReady({
+      coordinatorId,
+      week,
+      summaryText: cleanSummary || 'No summary available.',
+      scores: Array.isArray(scores) ? scores.slice() : [],
+      hitList: Array.isArray(hitList) ? hitList.slice() : [],
+      notHitList: Array.isArray(notHitList) ? notHitList.slice() : [],
+      otherActivities: Array.isArray(otherActivities) ? otherActivities.slice() : [],
+      poDescriptions: PO_DESCRIPTIONS.slice(),
+      exportedAt: new Date().toISOString(),
+    });
+  }, [onExportReady, coordinatorId, week, summary, scores, hitList, notHitList, otherActivities, PO_DESCRIPTIONS]);
+
+  // Build recommendations based on PO scores and not-hit list
+  useEffect(() => {
+    try {
+      const PO_TITLES = Array.from({ length: 15 }, (_, i) => `PO${i + 1}`);
+      const notHitSet = new Set((notHitList || []).map((h) => h.po));
+      const guidance = [
+        "Reinforce core computing, algorithms, and problem analysis in tasks.",
+        "Adopt standards, best practices, and coding conventions in work.",
+        "Practice structured problem analysis and root-cause techniques.",
+        "Engage users to clarify requirements and validate needs.",
+        "Design and iterate solutions; include implementation and evaluation steps.",
+        "Address safety, security, and environment impacts in solutions.",
+        "Use appropriate tools, frameworks, and platforms effectively.",
+        "Improve teamwork, collaboration, and situational leadership.",
+        "Create realistic project plans, timelines, and milestones.",
+        "Strengthen written/oral communication and documentation.",
+        "Discuss societal/organizational impact of solutions produced.",
+        "Highlight ethics, privacy, and compliance considerations.",
+        "Pursue self-learning; document new skills gained weekly.",
+        "Participate in basic research, experiments, or mini-studies.",
+        "Incorporate Filipino culture/context where appropriate.",
+      ];
+      const next = [];
+      for (let i = 0; i < 15; i++) {
+        const po = PO_TITLES[i];
+        const score = Number(scores?.[i] || 0);
+        if (score <= 0 || notHitSet.has(po)) {
+          next.push({
+            po,
+            tip: guidance[i],
+            desc: PO_DESCRIPTIONS[i] || "",
+          });
+        }
+      }
+      // Include all relevant POs (no truncation)
+      setRecommendations(next);
+    } catch {
+      setRecommendations([]);
+    }
+  }, [scores, notHitList, PO_DESCRIPTIONS]);
+
   // Initialize Bootstrap tooltips
   useEffect(() => {
     const els = Array.from(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
@@ -964,8 +1038,24 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
               </div>
             </div>
 
-            {/* PO Analysis Graph - Interactive Bootstrap Version */}
-            <div className="card">
+            {/* Recommendations - placed directly after Achieved/Not Met sections */}
+            {recommendations.length > 0 && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+                <h5 className="text-lg font-semibold text-emerald-800 mb-3">Recommendations for Improvement</h5>
+                {(() => {
+                  const codes = recommendations.map((r) => r.po).join(', ');
+                  const plan = recommendations.map((r) => `For ${r.po}, ${r.tip}`).join(' ');
+                  return (
+                    <p className="text-sm text-emerald-800 leading-relaxed">
+                      Based on the current results, the following program outcomes need more emphasis: {codes}. {plan} Work together to incorporate these focus areas into upcoming activities and evaluations.
+                    </p>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* PO Analysis Graph - Interactive (screen only) */}
+            <div className="card screen-only">
               <div className="card-header bg-primary text-white">
                 <h5 className="card-title mb-0">
                   <i className="bi bi-graph-up me-2"></i>
@@ -1087,6 +1177,32 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
               </div>
             </div>
 
+            {/* PO Analysis - Print-friendly table (hidden on screen; shown in PDF print) */}
+            <div className="print-only" style={{ display: 'none' }}>
+              <h5 className="text-lg font-semibold mb-2">Program Outcome Analysis</h5>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', border: '1px solid #e5e7eb', padding: 8 }}>PO</th>
+                    <th style={{ textAlign: 'left', border: '1px solid #e5e7eb', padding: 8 }}>Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {scores.map((v, i) => (
+                    <tr key={`print-po-${i}`}>
+                      <td style={{ border: '1px solid #e5e7eb', padding: 8 }}>PO{i + 1}</td>
+                      <td style={{ border: '1px solid #e5e7eb', padding: 8 }}>
+                        <div style={{ width: '100%', height: 10, background: '#e5e7eb', position: 'relative' }}>
+                          <div style={{ width: `${Math.max(0, Math.min(100, Number(v) || 0))}%`, height: 10, background: v > 0 ? '#0d6efd' : '#dc3545' }}></div>
+                        </div>
+                        <div style={{ fontSize: 11, marginTop: 4 }}>{Number(v) || 0}%</div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
             {/* PO Details Table - Bootstrap Version */}
             <div className="card">
               <div className="card-header bg-info text-white">
@@ -1149,6 +1265,7 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
                 </ul>
               </div>
             )}
+
           </div>
         )}
       </div>

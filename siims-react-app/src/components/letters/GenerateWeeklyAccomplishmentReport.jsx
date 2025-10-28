@@ -38,11 +38,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     padding: 5,
   },
+  textLeft: {
+    textAlign: "left",
+  },
 });
 
 const GenerateWeeklyAccomplishmentReport = ({
   imageHeight = 80,
   weeklyEntries = [],
+  header = {
+    studentName: "",
+    companyName: "",
+    coordinatorName: "",
+    chairpersonName: "",
+  },
 }) => {
   return (
     <Document>
@@ -57,6 +66,24 @@ const GenerateWeeklyAccomplishmentReport = ({
             src={image2}
             style={{ ...styles.image2, height: imageHeight }}
           />
+        </View>
+
+        {/* Identity Lines */}
+        <View style={{ marginBottom: 10 }}>
+          <Table>
+            <TH>
+              <TD style={styles.tableHeader}>Student</TD>
+              <TD style={styles.tableHeader}>Company</TD>
+              <TD style={styles.tableHeader}>Coordinator</TD>
+              <TD style={styles.tableHeader}>Chairperson</TD>
+            </TH>
+            <TR>
+              <TD style={{ ...styles.tableCell, ...styles.textLeft }}>{header.studentName || ""}</TD>
+              <TD style={{ ...styles.tableCell, ...styles.textLeft }}>{header.companyName || ""}</TD>
+              <TD style={{ ...styles.tableCell, ...styles.textLeft }}>{header.coordinatorName || ""}</TD>
+              <TD style={{ ...styles.tableCell, ...styles.textLeft }}>{header.chairpersonName || ""}</TD>
+            </TR>
+          </Table>
         </View>
 
         {/* Table Area */}
@@ -82,8 +109,8 @@ const GenerateWeeklyAccomplishmentReport = ({
                 <TD style={styles.tableCell}>
                   {formatDateOnly(record.end_date)}
                 </TD>
-                <TD style={styles.tableCell}>{record.tasks}</TD>
-                <TD style={styles.tableCell}>{record.learnings}</TD>
+                <TD style={{ ...styles.tableCell, ...styles.textLeft }}>{String(record.tasks || "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").trim()}</TD>
+                <TD style={{ ...styles.tableCell, ...styles.textLeft }}>{String(record.learnings || "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").trim()}</TD>
                 <TD style={styles.tableCell}>{record.no_of_hours}</TD>
               </TR>
             ))}
