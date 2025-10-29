@@ -1,8 +1,7 @@
 import React from "react";
 import Modal from "../../../components/modals/Modal";
 import { Button, Field, Input, Label } from "@headlessui/react";
-import ReactQuill from "react-quill";
-import "react-quill/dist/quill.snow.css";
+// Removed ReactQuill to avoid findDOMNode warnings in React 18
 import Text from "../../../components/common/Text";
 
 const WeeklyRecordModalForm = ({
@@ -14,6 +13,7 @@ const WeeklyRecordModalForm = ({
   errors,
   onSubmit,
   validationErrors = {},
+  lockedWeek = null,
 }) => {
   return (
     <Modal
@@ -29,7 +29,9 @@ const WeeklyRecordModalForm = ({
               htmlFor="week_number"
               className="block mb-2 text-sm font-bold text-gray-900 dark:text-black"
             >
-              Week Number <span className="text-red-500 text-lg">*</span>
+              Week Number {lockedWeek && (
+                <span className="ml-2 px-2 py-1 bg-blue-200 text-blue-800 text-xs rounded-full">Requested</span>
+              )} <span className="text-red-500 text-lg">*</span>
             </Label>
             <Input
               type="number"
@@ -37,6 +39,7 @@ const WeeklyRecordModalForm = ({
               name="week_number"
               value={formData.week_number}
               onChange={handleInputChange}
+              disabled={!!lockedWeek}
               className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
               placeholder="1"
               required
@@ -101,18 +104,18 @@ const WeeklyRecordModalForm = ({
           </div>
         </div>
 
-        {/* Tasks Input */}
+        {/* Tasks Input (plain textarea to avoid ReactQuill findDOMNode warnings) */}
         <Field className="mt-4">
           <Label className="block mb-2 text-sm font-bold text-gray-900 dark:text-black">
             Tasks <span className="text-red-500 text-lg">*</span>
           </Label>
-          <ReactQuill
-            theme="snow"
+          <textarea
+            id="tasks"
+            name="tasks"
             value={formData.tasks}
-            onChange={(value) =>
-              handleInputChange({ target: { name: "tasks", value } })
-            }
-            className="bg-white dark:bg-gray-800 text-black"
+            onChange={handleInputChange}
+            className="bg-white dark:bg-gray-800 text-black border border-gray-300 rounded-lg w-full p-2.5 min-h-[120px]"
+            required
           />
           {validationErrors.tasks && (
             <Text className="text-red-500 text-sm mt-1">
@@ -121,18 +124,18 @@ const WeeklyRecordModalForm = ({
           )}
         </Field>
 
-        {/* Learnings Input */}
+        {/* Learnings Input (plain textarea) */}
         <Field className="mt-4">
           <Label className="block mb-2 text-sm font-bold text-gray-900 dark:text-black">
             Learnings <span className="text-red-500 text-lg">*</span>
           </Label>
-          <ReactQuill
-            theme="snow"
+          <textarea
+            id="learnings"
+            name="learnings"
             value={formData.learnings}
-            onChange={(value) =>
-              handleInputChange({ target: { name: "learnings", value } })
-            }
-            className="bg-white dark:bg-gray-800 text-black"
+            onChange={handleInputChange}
+            className="bg-white dark:bg-gray-800 text-black border border-gray-300 rounded-lg w-full p-2.5 min-h-[120px]"
+            required
           />
           {validationErrors.learnings && (
             <Text className="text-red-500 text-sm mt-1">

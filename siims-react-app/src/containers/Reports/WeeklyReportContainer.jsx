@@ -3,6 +3,8 @@ import WeeklyReportPresenter from "./WeeklyReportPresenter";
 import useForm from "./hooks/useForm";
 import { addWar, deleteWarByID, getAllWar, updateWar } from "./Api";
 import { getRequest } from "../../api/apiHelpers";
+import { useSearchParams } from "react-router-dom";
+import axiosClient from "../../api/axiosClient";
 
 const WeeklyReportContainer = ({ authorizeRole }) => {
   /**
@@ -53,6 +55,10 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
     no_of_hours: "",
   });
 
+  // Request week (from coordinator request)
+  const [searchParams] = useSearchParams();
+  const [lockedWeek, setLockedWeek] = useState(null);
+
   /**
    *
    *
@@ -88,6 +94,12 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
   useEffect(() => {
     getWeeklyRecords();
     fetchIdentity();
+    const rq = searchParams.get("request_week");
+    if (rq) {
+      setLockedWeek(Number(rq));
+      setFormValues((prev) => ({ ...prev, week_number: String(rq) }));
+      setIsAddOpen(true);
+    }
   }, []);
 
   /**
@@ -143,6 +155,18 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
       setIsOpen: setIsAddOpen,
       setRows: setRows,
     });
+    // If this entry fulfills a coordinator request, mark it complete
+    try {
+      if (lockedWeek) {
+        await axiosClient.get('/sanctum/csrf-cookie', { withCredentials: true });
+        try {
+          await axiosClient.put('/api/v1/student/weekly-entry-requests/complete', { week_number: Number(lockedWeek) });
+        } catch (err) {
+          await axiosClient.put('/api/v1/weekly-entry-requests/complete', { week_number: Number(lockedWeek) });
+        }
+        setLockedWeek(null);
+      }
+    } catch (_) {}
   };
 
   const updateWeeklyTimeRecord = async (e) => {

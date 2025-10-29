@@ -10,6 +10,7 @@ use App\Http\Controllers\StudentWorkPostController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\StudentProfileController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\WeeklyEntryRequestController;
 
 // Student Routes
 // resources: /student
@@ -128,4 +129,8 @@ Route::prefix('/student')->middleware('role:student')->group(function () {
     Route::get('/', [StudentEndorsementLetterController::class, 'index']);
     Route::post('/', [StudentEndorsementLetterController::class, 'store']);
   });
+
+  // Weekly entry requests (student-facing aliases)
+  Route::get('/weekly-entry-requests', [WeeklyEntryRequestController::class, 'myPending']);
+  Route::put('/weekly-entry-requests/complete', [WeeklyEntryRequestController::class, 'completeByWeek']);
 });

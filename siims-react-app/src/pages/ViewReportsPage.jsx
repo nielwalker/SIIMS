@@ -31,6 +31,8 @@ const ViewReportsPage = ({ authorizeRole }) => {
   const [loading, setLoading] = useState(false);
   // Row State
   const [rows, setRows] = useState([]);
+  // Keep all entries for status computation across weeks
+  const [allEntries, setAllEntries] = useState([]);
   // Data grid URL derived from selected student
   // Grid will fetch weekly entries from backend when applicationId is present
   // grid fetch disabled; we fetch and filter locally from weekly-entries/student/{id}
@@ -241,30 +243,31 @@ const ViewReportsPage = ({ authorizeRole }) => {
           setSelectedWeek(weeksWithData[0]);
         }
         
-        // Filter entries by selected week
-        const filtered = list.filter((e) => {
-          const wn = Number(e.week_number ?? e.weekNumber ?? e.week);
-          return Number.isNaN(wn) ? true : wn === Number(selectedWeek);
-        });
-        
+        // Helper formatters
         const truncate = (s, n = 300) => (s && s.length > n ? s.slice(0, n) + "…" : s);
         const fmtDate = (s) => {
           if (!s) return "";
           const str = String(s).replace('T', ' ');
           return str.slice(0, 16); // YYYY-MM-DD HH:mm
         };
-        const normalized = filtered.map((e) => ({
+
+        // Normalize ALL entries for status computation
+        const normalizedAll = list.map((e) => ({
           id: e.id,
           student_id: String(e.student_id ?? e.studentId ?? (selectedStudentId ?? "")),
-          week_number: e.week_number ?? e.weekNumber ?? e.week,
+          week_number: Number(e.week_number ?? e.weekNumber ?? e.week),
           start_date: fmtDate(e.start_date ?? e.startDate),
           end_date: fmtDate(e.end_date ?? e.endDate),
-          tasks: truncate(String(e.tasks ?? e.task ?? e.activities ?? "").replace(/<\s*\/?.*?>/g, " ").replace(/\s+/g, " ").trim()),
-          learnings: truncate(String(e.learnings ?? e.learning ?? "").replace(/<\s*\/?.*?>/g, " ").replace(/\s+/g, " ").trim()),
+          tasks: truncate(String(e.tasks ?? e.task ?? e.activities ?? "").replace(/<\s*\/?[^>]*>/g, " ").replace(/\s+/g, " ").trim()),
+          learnings: truncate(String(e.learnings ?? e.learning ?? "").replace(/<\s*\/?[^>]*>/g, " ").replace(/\s+/g, " ").trim()),
           no_of_hours: e.no_of_hours ?? e.hours ?? e.noOfHours ?? 0,
           created_at: fmtDate(e.created_at ?? e.createdAt),
         }));
-        setRows(normalized);
+        setAllEntries(normalizedAll);
+        
+        // Filter entries by selected week for the grid
+        const filtered = normalizedAll.filter((e) => e.week_number === Number(selectedWeek));
+        setRows(filtered);
       } catch (e) {
         setAvailableWeeks([]);
         setRows([]);
@@ -537,19 +540,23 @@ const ViewReportsPage = ({ authorizeRole }) => {
           <div className="mt-6 bg-white border rounded p-4">
             <h4 className="text-md font-semibold text-gray-800 mb-3">Weekly Submission Progress</h4>
             {(() => {
-              // Build a 5-row view (Week, Date, Status) like the sample
-              const submitted = rows && rows.length > 0;
-              const firstDate = submitted ? (rows[0]?.created_at || rows[0]?.start_date || '') : '';
+              // Build a 5-row view for the currently selected week only
+              const weekNum = Number(selectedWeek) || 1;
+              const entriesForWeek = allEntries.filter((e) => Number(e.week_number) === weekNum);
+              const sorted = entriesForWeek.sort((a, b) => String(a.created_at || a.start_date).localeCompare(String(b.created_at || b.start_date)));
+              const getDate = (idx) => (sorted[idx]?.created_at || sorted[idx]?.start_date || '');
+
               const rowsView = Array.from({ length: 5 }, (_, i) => ({
-                weekLabel: `Week ${selectedWeek}`,
-                date: i === 0 && submitted ? firstDate : '',
-                status: i === 0 && submitted ? 'Submitted' : 'Missing',
+                label: `Week ${weekNum} — Day ${i + 1}`,
+                date: sorted[i] ? getDate(i) : '',
+                status: sorted[i] ? 'Submitted' : 'Missing',
               }));
+
               return (
                 <table className="w-full border border-gray-300 text-sm">
                   <thead>
                     <tr className="bg-gray-50">
-                      <th className="border px-4 py-2 text-left">Week</th>
+                      <th className="border px-4 py-2 text-left">Week / Day</th>
                       <th className="border px-4 py-2 text-center">Date</th>
                       <th className="border px-4 py-2 text-center">Status</th>
                       <th className="border px-4 py-2 text-center">Request</th>
@@ -558,7 +565,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
                   <tbody>
                     {rowsView.map((r, idx) => (
                       <tr key={idx}>
-                        <td className="border px-4 py-3">{r.weekLabel}</td>
+                        <td className="border px-4 py-3">{r.label}</td>
                         <td className="border px-4 py-3 text-center">{r.date}</td>
                         <td className="border px-4 py-3 text-center">
                           <span className={`px-2 py-1 rounded text-xs ${r.status === 'Submitted' ? 'text-green-700' : 'text-red-600'}`}>
@@ -566,25 +573,20 @@ const ViewReportsPage = ({ authorizeRole }) => {
                           </span>
                         </td>
                         <td className="border px-4 py-3 text-center">
-                          {r.status === 'Missing' ? (
+                          {r.status !== 'Submitted' ? (
                             <button
                               onClick={async () => {
                                 try {
-                                  const apiBase = import.meta.env.VITE_API_BASE_URL;
-                                  const resp = await fetch(`${apiBase}/api/v1/weekly-entry-requests`, {
-                                    method: 'POST',
-                                    headers: {
-                                      Accept: 'application/json',
-                                      'Content-Type': 'application/json',
-                                      Authorization: `Bearer ${JSON.parse(localStorage.getItem('ACCESS_TOKEN'))}`,
-                                    },
-                                    credentials: 'include',
-                                    body: JSON.stringify({ student_id: selectedStudentId, week_number: selectedWeek })
+                                  await axiosClient.get('/sanctum/csrf-cookie', { withCredentials: true });
+                                  await axiosClient.post('/api/v1/weekly-entry-requests', {
+                                    student_id: selectedStudentId,
+                                    week_number: weekNum,
                                   });
-                                  if (!resp.ok) {
-                                    console.error('Request failed');
-                                  }
-                                } catch (e) { console.error(e); }
+                                  alert('Request sent to the student successfully.');
+                                } catch (e) {
+                                  console.error(e);
+                                  alert('Failed to send request.');
+                                }
                               }}
                               className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
                             >

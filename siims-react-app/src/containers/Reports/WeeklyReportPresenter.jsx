@@ -68,6 +68,7 @@ const WeeklyReportPresenter = ({
         setIsOpen={setIsAddOpen}
         onSubmit={addWeeklyTimeRecord}
         validationErrors={validationErrors}
+        lockedWeek={formData?.week_number || null}
       />
 
       {/* Update Form Modal */}

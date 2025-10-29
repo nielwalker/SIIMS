@@ -60,11 +60,21 @@ const TestingHomePage = () => {
   useEffect(() => {
     const fetchRequests = async () => {
       try {
-        const resp = await axiosClient.get('/api/v1/weekly-entry-requests/student');
+        let resp = await axiosClient.get('/api/v1/student/weekly-entry-requests');
+        if (!resp || !Array.isArray(resp?.data?.data)) {
+          // fallback to original path if alias not registered
+          resp = await axiosClient.get('/api/v1/weekly-entry-requests/student');
+        }
         const list = Array.isArray(resp?.data?.data) ? resp.data.data : [];
         setRequests(list);
       } catch (e) {
-        setRequests([]);
+        try {
+          const resp2 = await axiosClient.get('/api/v1/weekly-entry-requests/student');
+          const list2 = Array.isArray(resp2?.data?.data) ? resp2.data.data : [];
+          setRequests(list2);
+        } catch {
+          setRequests([]);
+        }
       }
     };
     fetchRequests();
@@ -83,19 +93,23 @@ const TestingHomePage = () => {
 
   // Navigate to Daily Time Record
   const navigateToDtr = () => {
-    const to = `${location.pathname}/${latestApplication.id}/daily-time-records`;
-
+    const appId = latestApplication?.id || profile?.latest_application?.id;
+    if (!appId) { alert('No active application found.'); return; }
+    const to = `${location.pathname}/${appId}/daily-time-records`;
     navigate(to);
   };
 
   // Navigate to Weekly Accomplishment Reports
   const navigateToWeekly = () => {
-    const to = `${location.pathname}/${latestApplication.id}/weekly-accomplishment-reports`;
+    const appId = latestApplication?.id || profile?.latest_application?.id;
+    if (!appId) { alert('No active application found.'); return; }
+    const to = `${location.pathname}/${appId}/weekly-accomplishment-reports`;
     navigate(to);
   };
 
-  const openRequestWeek = (week) => {
-    const to = `${location.pathname}/${latestApplication.id}/weekly-accomplishment-reports?request_week=${week}`;
+  const openRequestWeek = async (week) => {
+    // Navigate to the student weekly-accomplishments page which does not require application id
+    const to = `/auth/my/weekly-accomplishments?request_week=${week}`;
     navigate(to);
   };
 
@@ -118,52 +132,58 @@ const TestingHomePage = () => {
           {/* Profile Sidebar */}
           <ProfileSidebar profile={profile} />
 
-          {/* If the student has no coordinator yet. Display Empty State */}
-          {!profile.coordinator_id && (
-            <EmptyState
-              title="No jobs available at the moment"
-              message="Once you have a coordinator, jobs will appear here."
-            />
-          )}
+          {/* Right column content stacked vertically */}
+          <div className="flex-1 flex flex-col gap-4">
+            {/* All Jobs / Job feed first */}
+            {displayJobs({
+              studentStatusID: studentStatusID,
+              coordinatorID: profile.coordinator_id,
+            })}
 
-          {/* If student is not yet applied . Display Job Posts */}
-          {/* Job Listings and Filters (Scrollable Middle) */}
-          {displayJobs({
-            studentStatusID: studentStatusID,
-            coordinatorID: profile.coordinator_id,
-          })}
-
-          {studentStatusID &&
-            (studentStatusID === 2 ||
-              studentStatusID === 3 ||
-              studentStatusID === 4) && (
-              <CurrentApplication studentStatusID={studentStatusID} />
+            {/* Requests from coordinator below jobs */}
+            {requests.length > 0 && (
+              <div className="bg-white border rounded px-4 py-3 shadow-sm">
+                <h4 className="text-md font-semibold text-amber-900 mb-2">Requests from your coordinator</h4>
+                <ul className="list-disc list-inside text-amber-900">
+                  {requests.map((r) => (
+                    <li key={r.id} className="mb-1">
+                      Please submit <span className="font-semibold">Week {r.week_number}</span>
+                      <button
+                        onClick={() => openRequestWeek(r.week_number)}
+                        className="ml-3 px-2 py-1 text-xs rounded bg-blue-600 text-white hover:bg-blue-700"
+                      >
+                        Open
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
 
-          {/* Reports Section */}
-          {latestApplication &&
-            (studentStatusID === 5 || studentStatusID === 6) && (
-              <>
-                {requests.length > 0 && (
-                  <div className="bg-amber-50 border border-amber-200 rounded p-4 mb-4">
-                    <h4 className="text-md font-semibold text-amber-900 mb-2">Requests from your coordinator</h4>
-                    <ul className="list-disc list-inside text-amber-900">
-                      {requests.map((r) => (
-                        <li key={r.id} className="mb-1">
-                          Please submit <span className="font-semibold">Week {r.week_number}</span>
-                          <button onClick={() => openRequestWeek(r.week_number)} className="ml-3 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">Open</button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                <ReportsSection
-                  navigateToDtr={navigateToDtr}
-                  navigateToWeekly={navigateToWeekly}
-                  navigateToInsights={navigateToInsights}
-                />
-              </>
+            {/* If the student has no coordinator yet. Display Empty State */}
+            {!profile.coordinator_id && (
+              <EmptyState
+                title="No jobs available at the moment"
+                message="Once you have a coordinator, jobs will appear here."
+              />
             )}
+
+            {studentStatusID &&
+              (studentStatusID === 2 ||
+                studentStatusID === 3 ||
+                studentStatusID === 4) && (
+                <CurrentApplication studentStatusID={studentStatusID} />
+              )}
+
+            {/* Reports Section */}
+            {latestApplication && (studentStatusID === 5 || studentStatusID === 6) && (
+              <ReportsSection
+                navigateToDtr={navigateToDtr}
+                navigateToWeekly={navigateToWeekly}
+                navigateToInsights={navigateToInsights}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

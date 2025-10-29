@@ -2,6 +2,7 @@ import { useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { postRequest } from "../../api/apiHelpers";
+import axiosClient from "../../api/axiosClient";
 import { useLoaderData, useSearchParams } from "react-router-dom";
 import Loader from "../../components/common/Loader";
 
@@ -95,16 +96,13 @@ const StudentWeeklyAccomplishmentPage = () => {
           // If we came from a coordinator request, mark it completed
           try {
             if (lockedWeek) {
-              await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/weekly-entry-requests/complete`, {
-                method: 'PUT',
-                headers: {
-                  Accept: 'application/json',
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${JSON.parse(localStorage.getItem('ACCESS_TOKEN'))}`,
-                },
-                credentials: 'include',
-                body: JSON.stringify({ week_number: Number(lockedWeek) })
-              });
+              await axiosClient.get('/sanctum/csrf-cookie', { withCredentials: true });
+              try {
+                await axiosClient.put('/api/v1/student/weekly-entry-requests/complete', { week_number: Number(lockedWeek) });
+              } catch (err) {
+                // Fallback to original path if alias not present
+                await axiosClient.put('/api/v1/weekly-entry-requests/complete', { week_number: Number(lockedWeek) });
+              }
             }
           } catch (_) {}
         }
