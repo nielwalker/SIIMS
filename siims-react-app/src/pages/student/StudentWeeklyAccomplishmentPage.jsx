@@ -2,7 +2,7 @@ import { useState } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { postRequest } from "../../api/apiHelpers";
-import { useLoaderData } from "react-router-dom";
+import { useLoaderData, useSearchParams } from "react-router-dom";
 import Loader from "../../components/common/Loader";
 
 const StudentWeeklyAccomplishmentPage = () => {
@@ -22,6 +22,8 @@ const StudentWeeklyAccomplishmentPage = () => {
     tasks: "",
     learnings: "",
   });
+  const [lockedWeek, setLockedWeek] = useState(null);
+  const [searchParams] = useSearchParams();
   const [no_of_hours, setNo_of_hours] = useState(0);
   const [selectedWeek, setSelectedWeek] = useState(""); // For selecting week to export
   const [editingReport, setEditingReport] = useState(null); // Track which report is being edited
@@ -90,6 +92,21 @@ const StudentWeeklyAccomplishmentPage = () => {
             tasks: "",
             learnings: "",
           });
+          // If we came from a coordinator request, mark it completed
+          try {
+            if (lockedWeek) {
+              await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/weekly-entry-requests/complete`, {
+                method: 'PUT',
+                headers: {
+                  Accept: 'application/json',
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${JSON.parse(localStorage.getItem('ACCESS_TOKEN'))}`,
+                },
+                credentials: 'include',
+                body: JSON.stringify({ week_number: Number(lockedWeek) })
+              });
+            }
+          } catch (_) {}
         }
       } else {
         alert("Please complete all fields.");
@@ -100,6 +117,15 @@ const StudentWeeklyAccomplishmentPage = () => {
       setLoading(false);
     }
   };
+
+  // Pre-fill requested week if provided in query param
+  React.useEffect(() => {
+    const rq = searchParams.get('request_week');
+    if (rq) {
+      setLockedWeek(Number(rq));
+      setCurrentWeek((prev) => ({ ...prev, week_number: String(rq) }));
+    }
+  }, []);
 
   const editReport = (index) => {
     const reportToEdit = weeklyReports[index];
@@ -306,7 +332,7 @@ const StudentWeeklyAccomplishmentPage = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Week Number
+                  Week Number {lockedWeek ? <span className="ml-2 px-2 py-0.5 text-xs rounded bg-amber-200 text-amber-900">Requested</span> : null}
                 </label>
                 <input
                   type="number"
@@ -315,6 +341,7 @@ const StudentWeeklyAccomplishmentPage = () => {
                   onChange={handleChange}
                   placeholder="e.g., 1"
                   className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
+                  disabled={!!lockedWeek}
                 />
               </div>
               <div>

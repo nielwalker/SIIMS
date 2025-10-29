@@ -34,3 +34,14 @@ Route::prefix('/weekly-entries')->middleware('role:admin,student,coordinator,cha
   Route::delete('/{week_id}', [WeeklyRecordController::class, 'delete']);
   
 });
+
+// Weekly Entry Requests (request students to submit a specific week)
+use App\Http\Controllers\Api\WeeklyEntryRequestController;
+Route::prefix('/weekly-entry-requests')->group(function () {
+  // Coordinator creates a request for a student
+  Route::post('/', [WeeklyEntryRequestController::class, 'create'])->middleware('role:coordinator');
+  // Student lists pending requests
+  Route::get('/student', [WeeklyEntryRequestController::class, 'myPending'])->middleware('role:student');
+  // Student completes a request by week after submission
+  Route::put('/complete', [WeeklyEntryRequestController::class, 'completeByWeek'])->middleware('role:student');
+});

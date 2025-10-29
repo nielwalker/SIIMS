@@ -9,6 +9,7 @@ import CurrentApplication from "../../../components/applications/CurrentApplicat
 import EmptyState from "../../../components/common/EmptyState";
 import { useLocation, useNavigate } from "react-router-dom";
 import ReportsSection from "../../../components/workPosts/ReportsSection";
+import axiosClient from "../../../api/axiosClient";
 
 const TestingHomePage = () => {
   const location = useLocation();
@@ -22,6 +23,7 @@ const TestingHomePage = () => {
   // State
   const [studentStatusID, setStudentStatusID] = useState(0);
   const [latestApplication, setLatestApplication] = useState({});
+  const [requests, setRequests] = useState([]);
 
   // Fetch State
   useEffect(() => {
@@ -54,6 +56,20 @@ const TestingHomePage = () => {
     fetchStudentProfile();
   }, []);
 
+  // Fetch pending weekly entry requests
+  useEffect(() => {
+    const fetchRequests = async () => {
+      try {
+        const resp = await axiosClient.get('/api/v1/weekly-entry-requests/student');
+        const list = Array.isArray(resp?.data?.data) ? resp.data.data : [];
+        setRequests(list);
+      } catch (e) {
+        setRequests([]);
+      }
+    };
+    fetchRequests();
+  }, []);
+
   /**
    * Fetch Job Posts
    *
@@ -75,7 +91,11 @@ const TestingHomePage = () => {
   // Navigate to Weekly Accomplishment Reports
   const navigateToWeekly = () => {
     const to = `${location.pathname}/${latestApplication.id}/weekly-accomplishment-reports`;
+    navigate(to);
+  };
 
+  const openRequestWeek = (week) => {
+    const to = `${location.pathname}/${latestApplication.id}/weekly-accomplishment-reports?request_week=${week}`;
     navigate(to);
   };
 
@@ -123,11 +143,26 @@ const TestingHomePage = () => {
           {/* Reports Section */}
           {latestApplication &&
             (studentStatusID === 5 || studentStatusID === 6) && (
-              <ReportsSection
-                navigateToDtr={navigateToDtr}
-                navigateToWeekly={navigateToWeekly}
-                navigateToInsights={navigateToInsights}
-              />
+              <>
+                {requests.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded p-4 mb-4">
+                    <h4 className="text-md font-semibold text-amber-900 mb-2">Requests from your coordinator</h4>
+                    <ul className="list-disc list-inside text-amber-900">
+                      {requests.map((r) => (
+                        <li key={r.id} className="mb-1">
+                          Please submit <span className="font-semibold">Week {r.week_number}</span>
+                          <button onClick={() => openRequestWeek(r.week_number)} className="ml-3 px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700">Open</button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <ReportsSection
+                  navigateToDtr={navigateToDtr}
+                  navigateToWeekly={navigateToWeekly}
+                  navigateToInsights={navigateToInsights}
+                />
+              </>
             )}
         </div>
       </div>

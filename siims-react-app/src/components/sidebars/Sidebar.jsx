@@ -90,7 +90,7 @@ export default function Sidebar({
         </div>
 
         <SidebarContext.Provider value={{ expanded }}>
-          <ul className="flex-1 px-3">
+          <ul className="flex-1 px-3 list-none">
             {children}
 
             {roles.length > 1 && (

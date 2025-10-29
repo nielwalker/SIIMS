@@ -28,13 +28,7 @@ export default function SidebarItem({ icon, text, to, active, alert }) {
         {text}
       </Text>
 
-      {alert && (
-        <div
-          className={`absolute right-2 w-2 h-2 rounded bg-indigo-400 ${
-            expanded ? "" : "top-2"
-          }`}
-        />
-      )}
+      {/* Removed right-side alert dot indicator */}
 
       {/* {!expanded && (
         <div

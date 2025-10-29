@@ -552,6 +552,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
                       <th className="border px-4 py-2 text-left">Week</th>
                       <th className="border px-4 py-2 text-center">Date</th>
                       <th className="border px-4 py-2 text-center">Status</th>
+                      <th className="border px-4 py-2 text-center">Request</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -563,6 +564,35 @@ const ViewReportsPage = ({ authorizeRole }) => {
                           <span className={`px-2 py-1 rounded text-xs ${r.status === 'Submitted' ? 'text-green-700' : 'text-red-600'}`}>
                             {r.status}
                           </span>
+                        </td>
+                        <td className="border px-4 py-3 text-center">
+                          {r.status === 'Missing' ? (
+                            <button
+                              onClick={async () => {
+                                try {
+                                  const apiBase = import.meta.env.VITE_API_BASE_URL;
+                                  const resp = await fetch(`${apiBase}/api/v1/weekly-entry-requests`, {
+                                    method: 'POST',
+                                    headers: {
+                                      Accept: 'application/json',
+                                      'Content-Type': 'application/json',
+                                      Authorization: `Bearer ${JSON.parse(localStorage.getItem('ACCESS_TOKEN'))}`,
+                                    },
+                                    credentials: 'include',
+                                    body: JSON.stringify({ student_id: selectedStudentId, week_number: selectedWeek })
+                                  });
+                                  if (!resp.ok) {
+                                    console.error('Request failed');
+                                  }
+                                } catch (e) { console.error(e); }
+                              }}
+                              className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              Request
+                            </button>
+                          ) : (
+                            <span className="text-gray-400">—</span>
+                          )}
                         </td>
                       </tr>
                     ))}
