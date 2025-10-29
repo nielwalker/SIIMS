@@ -82,6 +82,11 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
     companyName: "",
     coordinatorName: "",
     chairpersonName: "",
+    unitOfficeDept: "",
+    traineeName: "",
+    supervisorName: "",
+    periodStart: "",
+    periodEnd: "",
   });
 
   /**
@@ -121,13 +126,19 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
   const fetchIdentity = async () => {
     try {
       const profile = await getRequest({ url: "/api/v1/profiles/student" });
+      const home = await getRequest({ url: "/api/v1/homes/student" });
       const user = profile?.user || {};
       const student = profile?.student || {};
       const studentUser = student?.user || user;
-      const studentName = [studentUser?.first_name, studentUser?.last_name].filter(Boolean).join(" ") || profile?.name || "";
+      const fullName = (u = {}) => [u?.first_name, u?.middle_name, u?.last_name].filter(Boolean).join(" ");
+      const studentName = fullName(studentUser) || profile?.name || "";
 
-      const company = student?.company || profile?.company || {};
+      const company = student?.company || profile?.company || student?.company || {};
       const companyName = company?.name || "";
+      // New: pull normalized address from profile.latest_application.office.address if present.
+      // If not present, use company.address (populated from first office on backend) as fallback.
+      let unitOfficeDept = (student?.latest_application?.office?.address)
+        || company?.address || company?.location || profile?.company_address || profile?.company_location || "";
 
       const coordinator = student?.coordinator || profile?.coordinator || {};
       const coordUser = coordinator?.user || {};
@@ -137,11 +148,69 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
       const chair = program?.chairperson || {};
       const chairUser = chair?.user || {};
       const chairpersonName = [chairUser?.first_name, chairUser?.last_name].filter(Boolean).join(" ") || "";
-      setHeaderInfo({ studentName, companyName, coordinatorName, chairpersonName });
+      // Try to get supervisor from latest application
+      let supervisorName = "";
+      // Prefer company user as supervisor (company contact acts as supervisor)
+      let companyUser = company?.user || profile?.company_user || student?.company?.user || null;
+      if (companyUser && !supervisorName) {
+        supervisorName = fullName(companyUser);
+      }
+
+      // Try to use latest application from /homes/student (most reliable for address and office supervisor)
+      try {
+        const app = home?.latest_application || home?.latestApplication || home?.student?.latestApplication || null;
+        if (app) {
+          const office = app?.work_post?.office || {};
+          const supUser = office?.supervisor?.user || office?.supervisor || {};
+          // Use office supervisor only if company user is not available
+          supervisorName = supervisorName || fullName(supUser);
+          const parts = [office?.street, office?.barangay, office?.city_municipality, office?.province, office?.postal_code].filter(Boolean);
+          unitOfficeDept = unitOfficeDept || (parts.length ? parts.join(', ') : '') || office?.address || office?.location || "";
+        }
+      } catch (_) {}
+
+      // Additional fallback: query student applications endpoint
+      try {
+        const apps = await getRequest({ url: "/api/v1/student/applications" });
+        const list = Array.isArray(apps) ? apps : (Array.isArray(apps?.data) ? apps.data : []);
+        if (list && list.length > 0) {
+          const latest = list[0];
+          const office = latest?.work_post?.office || {};
+          const supUser = office?.supervisor?.user || office?.supervisor || {};
+          supervisorName = supervisorName || fullName(supUser);
+          const parts = [office?.street, office?.barangay, office?.city_municipality, office?.province, office?.postal_code].filter(Boolean);
+          unitOfficeDept = unitOfficeDept || (parts.length ? parts.join(', ') : '') || office?.address || office?.location || "";
+        }
+      } catch (_) {}
+
+      setHeaderInfo((prev) => ({
+        ...prev,
+        studentName,
+        companyName,
+        coordinatorName,
+        chairpersonName,
+        unitOfficeDept,
+        traineeName: studentName,
+        supervisorName,
+      }));
     } catch (_) {
-      setHeaderInfo({ studentName: "", companyName: "", coordinatorName: "", chairpersonName: "" });
+      setHeaderInfo({ studentName: "", companyName: "", coordinatorName: "", chairpersonName: "", unitOfficeDept: "", traineeName: "", supervisorName: "", periodStart: "", periodEnd: "" });
     }
   };
+
+  // Derive period start/end whenever rows change
+  useEffect(() => {
+    if (!rows || rows.length === 0) {
+      setHeaderInfo((prev) => ({ ...prev, periodStart: "", periodEnd: "" }));
+      return;
+    }
+    const parse = (s) => (s ? String(s).slice(0, 10) : "");
+    const starts = rows.map((r) => parse(r.start_date)).filter(Boolean).sort();
+    const ends = rows.map((r) => parse(r.end_date)).filter(Boolean).sort();
+    const periodStart = starts[0] || "";
+    const periodEnd = ends[ends.length - 1] || periodStart;
+    setHeaderInfo((prev) => ({ ...prev, periodStart, periodEnd }));
+  }, [rows]);
 
   const addWeeklyTimeRecord = async (e) => {
     e.preventDefault();
