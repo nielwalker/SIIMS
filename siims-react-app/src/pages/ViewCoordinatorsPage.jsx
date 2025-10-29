@@ -448,7 +448,7 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
           });
           if (resp.ok) {
             const j = await resp.json();
-            if (Array.isArray(j?.keywordScores)) keywordScores = j.keywordScores;
+            if (Array.isArray(j?.combinedScores)) keywordScores = j.combinedScores; else if (Array.isArray(j?.keywordScores)) keywordScores = j.keywordScores;
           }
         } catch (_) {}
         let nonZero = (keywordScores || []).filter((v) => Number(v) > 0).length;

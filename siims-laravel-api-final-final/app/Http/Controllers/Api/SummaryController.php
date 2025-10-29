@@ -143,6 +143,7 @@ class SummaryController extends Controller
         ];
 
         $lower = mb_strtolower($combined);
+        // 1) Word/keyword matching (bag-of-words, stems & variants)
         $counts = array_map(function ($set) use ($lower) {
             $count = 0;
             foreach ($set as $kw) {
@@ -166,6 +167,52 @@ class SummaryController extends Controller
             return (int) round(($c / $total) * 100);
         }, $counts);
 
+        // 2) Context-based matching using phrase/regex and proximity heuristics
+        $contextPatterns = [
+            // PO1
+            [ '/apply\s+(knowledge|principles)\s+of\s+(comput|science|mathematics)/i', '/algorithmic\s+thinking/i' ],
+            // PO2
+            [ '/(industry|coding)?\s*standards?/i', '/best\s+practices?/i', '/standards?\s+compliant/i' ],
+            // PO3
+            [ '/analy(ze|sis)\s+(a\s+)?(complex\s+)?(problem|issue|bug)/i', '/root\s+cause\s+analys(is|e)/i', '/troubleshoot(ing)?/i' ],
+            // PO4
+            [ '/user\s+(needs?|requirements?)/i', '/gather(ing)?\s+requirements?/i', '/stakeholder\s+(analysis|interviews?)/i', '/ux\s+research/i', '/usability\s+testing/i' ],
+            // PO5
+            [ '/design(ing)?\s+(and\s+)?(implement(ing)?|develop(ing)?)/i', '/system\s+design/i', '/evaluate\s+(the|a)\s+system/i', '/test(ing)?\s+(the\s+)?system/i' ],
+            // PO6
+            [ '/public\s+(health|safety)/i', '/environment(al)?\s+impact/i', '/security\s+(policy|controls?)/i', '/data\s+protection/i', '/ethic(al|s)\s+(issue|considerations?)/i' ],
+            // PO7
+            [ '/(use|utili[sz]e|apply)\s+(new\s+)?(tools?|frameworks?|libraries?|technolog(y|ies)|platforms?)/i', '/leverag(ed|ing)\s+(a|the)\s+(framework|tool|library)/i' ],
+            // PO8
+            [ '/team\s*work/i', '/collaborat(e|ion)/i', '/lead(ing|ership)/i', '/group\s+project/i', '/scrum\s+(master|lead)/i' ],
+            // PO9
+            [ '/project\s+plan/i', '/(gantt|timeline|schedule)/i', '/milestones?/i', '/work\s+breakdown/i' ],
+            // PO10
+            [ '/communicat(e|ion)\s+(skills?|effectively)/i', '/present(ation|ed)/i', '/wrote?\s+(a\s+)?report/i', '/documentation/i' ],
+            // PO11
+            [ '/impact\s+(on|to)\s+(society|organization|community)/i', '/social\s+impact/i', '/business\s+impact/i' ],
+            // PO12
+            [ '/ethical\s+(issue|practice|standard)/i', '/privacy\s+policy/i', '/legal\s+compliance/i', '/data\s+privacy/i', '/plagiarism/i' ],
+            // PO13
+            [ '/self[- ]study/i', '/independent\s+learning/i', '/learn(ed|ing)\s+(new|on\s+my\s+own)/i', '/continuous\s+learning/i' ],
+            // PO14
+            [ '/research(\s+and\s+development|\s+project)?/i', '/experimen(t|tal)/i', '/prototype\s+study/i', '/investigation/i' ],
+            // PO15
+            [ '/filipino\s+(heritage|culture)/i', '/historical\s+heritage/i', '/local\s+culture/i', '/tradition/i' ],
+        ];
+
+        $contextCounts = array_map(function ($patterns) use ($combined) {
+            $c = 0;
+            foreach ($patterns as $re) { if (preg_match($re, $combined)) { $c = 1; break; } }
+            return $c; // boolean-style hit per PO
+        }, $contextPatterns);
+
+        // Combined hit per PO (1 if either word- or context-based matched)
+        $combinedScores = [];
+        for ($i = 0; $i < 15; $i++) {
+            $combinedScores[$i] = (($counts[$i] ?? 0) > 0 || ($contextCounts[$i] ?? 0) > 0) ? 1 : 0;
+        }
+
         // Optionally call OpenAI when enabled
         // Pass week context by replacing placeholder {WEEK} in adapter prompts
         if ($week) {
@@ -182,6 +229,8 @@ class SummaryController extends Controller
         return response()->json([
             'summary' => $summary,
             'keywordScores' => $keywordScores,
+            'contextScores' => $contextCounts,
+            'combinedScores' => $combinedScores,
             'usedGPT' => (bool) $result['usedGPT'],
         ], 200, [
             'Access-Control-Allow-Origin' => '*',

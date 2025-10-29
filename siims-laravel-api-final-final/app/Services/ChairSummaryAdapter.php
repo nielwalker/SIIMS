@@ -49,6 +49,25 @@ class ChairSummaryAdapter
         return ['hit' => $hit, 'notHit' => $notHit];
     }
 
+    private function extractPoHitTypes(?string $raw): array
+    {
+        $word = [];
+        $context = [];
+        if (!$raw) return ['word' => $word, 'context' => $context];
+        $content = (string)$raw;
+        $content = preg_replace_callback('/```json[\s\S]*?```/i', function ($m) {
+            return preg_replace('/```json|```/i', '', $m[0]);
+        }, $content) ?? $content;
+        $decoded = json_decode($content, true);
+        if (is_array($decoded)) {
+            $w = $decoded['po_word_hit'] ?? [];
+            $c = $decoded['po_context_hit'] ?? [];
+            if (is_array($w)) $word = array_values(array_filter(array_map('strval', $w)));
+            if (is_array($c)) $context = array_values(array_filter(array_map('strval', $c)));
+        }
+        return ['word' => $word, 'context' => $context];
+    }
+
     private function formatPosExplanation(string $title, array $items): string
     {
         if (empty($items)) return $title.': None.';
@@ -71,7 +90,7 @@ class ChairSummaryAdapter
         if ($useGPT && $apiKey && $clean) {
             try {
                 $weekLabel = $week ? (string)$week : 'the selected week';
-                $sys = "You are an evaluator for BSIT internship journals.\n\nYour job is to:\n1. Correct and refine Activities and Learnings (grammar, punctuation, structure) without changing meaning.\n2. Produce a section-wide weekly summary in 2–3 sentences, third-person only (no I/me/we).\n3. Identify Program Outcomes (PO1–PO15) that are hit and not hit with brief reasons.\nStart the summary with: 'In week {$weekLabel} the students ...'. Return strict JSON with keys corrected_activities, corrected_learnings, 'summary for this section on a week', pos_hit, pos_not_hit.";
+                $sys = "You are an evaluator for BSIT internship journals.\n\nYour job is to:\n1. Correct and refine Activities and Learnings (grammar, punctuation, structure) without changing meaning.\n2. Produce a section-wide weekly summary in 2–3 sentences, third-person only (no I/me/we).\n3. Identify Program Outcomes (PO1–PO15) achieved (hit) and not achieved with brief reasons.\n4. Additionally, provide TWO distinct PO hit lists: (a) word-based hits (po_word_hit) when clear keywords/phrases appear; (b) context-based hits (po_context_hit) when the prose implies achievement even without explicit keywords.\nStart the summary with: 'In week {$weekLabel} the students ...'. Return STRICT JSON ONLY with keys: corrected_activities (array of strings), corrected_learnings (array of strings), 'summary for this section on a week' (string), pos_hit (array of {po, reason}), pos_not_hit (array of {po, reason}), po_word_hit (array of PO codes like ['PO1','PO3']), po_context_hit (array of PO codes like ['PO2']).";
                 $usr = "Combined student reports for the week (cleaned):\n".$clean;
                 $resp = Http::withToken($apiKey)->timeout(30)->post('https://api.openai.com/v1/chat/completions', [
                     'model' => 'gpt-4o-mini',
@@ -106,10 +125,18 @@ class ChairSummaryAdapter
         }
 
         $pos = $this->extractPosArrays($rawContent);
+        $poTypes = $this->extractPoHitTypes($rawContent);
         $posHitExplanation = $this->formatPosExplanation('Explanation on the POs hit', $pos['hit']);
         $posNotHitExplanation = $this->formatPosExplanation('Explanation on the POs not hit', $pos['notHit']);
 
-        return [ 'summary' => $summary, 'usedGPT' => $usedGPT, 'posHitExplanation' => $posHitExplanation, 'posNotHitExplanation' => $posNotHitExplanation ];
+        return [
+            'summary' => $summary,
+            'usedGPT' => $usedGPT,
+            'posHitExplanation' => $posHitExplanation,
+            'posNotHitExplanation' => $posNotHitExplanation,
+            'poWordHit' => $poTypes['word'],
+            'poContextHit' => $poTypes['context'],
+        ];
     }
 }
 
