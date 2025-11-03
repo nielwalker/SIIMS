@@ -170,6 +170,7 @@ const ManageSectionsPage = ({ authorizeRole }) => {
             addPlaceholder="Add New Section"
             showExportButton={false}
             showImportButton={false}
+            showAddButton={false}
           />
         </div>
       </div>

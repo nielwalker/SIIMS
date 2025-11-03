@@ -183,6 +183,12 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
         }
       } catch (_) {}
 
+      // Include program name in Unit/Office/Dept line if available
+      const programName = program?.name || program?.program_name || '';
+      if (programName) {
+        unitOfficeDept = unitOfficeDept ? `${programName} — ${unitOfficeDept}` : programName;
+      }
+
       setHeaderInfo((prev) => ({
         ...prev,
         studentName,

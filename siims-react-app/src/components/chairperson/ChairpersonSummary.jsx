@@ -44,6 +44,8 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
 
       const apiBase = import.meta.env.VITE_API_BASE_URL;
 
+      let poContextHitFromBackend = null; // holds AI contextual PO hits like ['PO1','PO3'] when available
+
       const computeScores = async () => {
         // Load students under this coordinator directly
         let filteredStudents = [];
@@ -172,11 +174,39 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
         });
         
         console.log('Keyword counts:', counts);
-        const total = counts.reduce((a, b) => a + b, 0) || 1;
-        const perc = counts.map((c) => Math.round((c / total) * 100));
-        console.log('Total matches:', total, 'Percentages:', perc);
-        setScores(perc);
-        console.log('PO Scores computed:', perc, 'Total entries:', weekEntries.length, 'Students:', filteredStudents.length);
+        const totalKeywordCount = counts.reduce((a, b) => a + b, 0) || 1; // avoid div/0
+
+        // Compute keyword-only percentages (unrounded used for weighted blend; round only final)
+        const keywordScore = counts.map((c) => (c / totalKeywordCount) * 100);
+
+        // Build AI contextual scores from backend poContextHit if available (0..1). Fallback to zeros.
+        const aiScores = Array.from({ length: 15 }, (_, i) => {
+          const code = `PO${i + 1}`;
+          return Array.isArray(poContextHitFromBackend) && poContextHitFromBackend.includes(code) ? 1 : 0;
+        });
+
+        // If both keyword and AI are zero everywhere, just return zeros
+        const hasAnyAIScore = aiScores.some((v) => v > 0);
+
+        // Weights
+        const alpha = 0.4; // keyword weight
+        const beta = 0.6;  // AI weight
+
+        let finalScores = Array.from({ length: 15 }, (_, i) => {
+          const k = keywordScore[i] || 0;
+          const a = aiScores[i] || 0;
+          if (k === 0 && a === 0) return 0;
+          return Math.round((alpha * k) + (beta * a * 100));
+        });
+
+        // If OpenAI/AI data missing entirely, fallback to keyword-only rounded percentages
+        if (!hasAnyAIScore) {
+          finalScores = keywordScore.map((k) => Math.round(k));
+        }
+
+        console.log('Total keyword matches:', totalKeywordCount, 'KeywordScore% (unrounded):', keywordScore, 'aiScores(0-1):', aiScores, 'Final%:', finalScores);
+        setScores(finalScores);
+        console.log('PO Scores computed (hybrid):', finalScores, 'Total entries:', weekEntries.length, 'Students:', filteredStudents.length);
 
         // Build hit/not-hit lists and other activities overview
         const PO_TITLES = [
@@ -185,7 +215,7 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
         const KEY_HINT = keywordSets.map((arr) => arr.slice(0,3).join(', '));
         const hits = [];
         const notHits = [];
-        perc.forEach((v, idx) => {
+        finalScores.forEach((v, idx) => {
           if (v > 0) {
             hits.push({ po: PO_TITLES[idx], reason: `Evidence of ${KEY_HINT[idx]}` });
           } else {
@@ -306,6 +336,10 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
         if (resp.ok) {
           const data = await resp.json();
           console.log('Backend response:', data);
+          // capture AI contextual PO hits from backend (OpenAI-derived)
+          if (Array.isArray(data?.poContextHit)) {
+            poContextHitFromBackend = data.poContextHit;
+          }
           
           // Handle "overall" case - summarize returned learnings locally (no POST)
           if (week === "overall" && data) {
