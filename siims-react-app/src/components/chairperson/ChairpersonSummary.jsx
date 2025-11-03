@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axiosClient from "../../api/axiosClient";
 
-export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger, onExportReady }) {
+export default function ChairpersonSummary({ coordinatorId, sectionId = null, week, refreshTrigger, onExportReady }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState("");
@@ -10,8 +10,8 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
   const [posNotHitText, setPosNotHitText] = useState("");
   const [hitList, setHitList] = useState([]);
   const [notHitList, setNotHitList] = useState([]);
-  const [otherActivities, setOtherActivities] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
+  const [noSectionStudents, setNoSectionStudents] = useState(false);
 
   const PO_DESCRIPTIONS = useMemo(() => ([
     "Apply knowledge of computing, science, and mathematics.",
@@ -33,8 +33,10 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
 
   async function loadSummary() {
     try {
-      setLoading(true);
+      // Loading state is already set in the useEffect above
+      // setLoading(true); // Removed - already set in useEffect
       setError(null);
+      setNoSectionStudents(false);
 
       // helper: fetch entries for students under coordinator and compute PO scores
       const authHeaders = {
@@ -45,6 +47,7 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
       const apiBase = import.meta.env.VITE_API_BASE_URL;
 
       let poContextHitFromBackend = null; // holds AI contextual PO hits like ['PO1','PO3'] when available
+      let aiRecommendationsFromBackend = null; // holds AI-generated recommendations
 
       const computeScores = async () => {
         // Load students under this coordinator directly
@@ -60,7 +63,13 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
           // Filter by selected coordinator
           filteredStudents = students.filter((s) => {
             const sid = s.coordinator_id ?? s.coordinatorId ?? s.coordinatorID;
-            return String(sid ?? '') === String(coordinatorId ?? '');
+            const matchesCoordinator = String(sid ?? '') === String(coordinatorId ?? '');
+            // Also filter by section if sectionId is provided
+            if (matchesCoordinator && sectionId) {
+              const section_id = s.section_id ?? s.sectionId ?? s.sectionID;
+              return String(section_id ?? '') === String(sectionId ?? '');
+            }
+            return matchesCoordinator;
           });
         } catch {}
         // If the chairperson endpoint payload doesn't include coordinator_id, fallback to full-students list
@@ -80,14 +89,24 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
               : [];
             const coordinatorKeyNames = ["coordinator_id", "coordinatorId", "coordinatorID", "coordinator_id_fk"];
             filteredStudents = students.filter((s) => {
+              let matchesCoordinator = false;
               for (const key of coordinatorKeyNames) {
                 if (s && Object.prototype.hasOwnProperty.call(s, key)) {
-                  return String(s[key] ?? "") === String(coordinatorId ?? "");
+                  matchesCoordinator = String(s[key] ?? "") === String(coordinatorId ?? "");
+                  break;
                 }
               }
-              const c = s.coordinator || s.ojt_coordinator || s.assignedCoordinator;
-              const cid = c ? (c.id ?? c.coordinator_id) : undefined;
-              return String(cid ?? "") === String(coordinatorId ?? "");
+              if (!matchesCoordinator) {
+                const c = s.coordinator || s.ojt_coordinator || s.assignedCoordinator;
+                const cid = c ? (c.id ?? c.coordinator_id) : undefined;
+                matchesCoordinator = String(cid ?? "") === String(coordinatorId ?? "");
+              }
+              // Also filter by section if sectionId is provided
+              if (matchesCoordinator && sectionId) {
+                const section_id = s.section_id ?? s.sectionId ?? s.sectionID ?? s.section?.id;
+                return String(section_id ?? '') === String(sectionId ?? '');
+              }
+              return matchesCoordinator;
             });
           } catch {}
         }
@@ -127,8 +146,23 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
             return !Number.isNaN(wn) ? wn === weekNum : true;
           });
         }
-        if (filteredStudents.length === 0 || weekEntries.length === 0) {
+        if (filteredStudents.length === 0) {
+          // Check if a section is selected and has no students
+          if (sectionId) {
+            setNoSectionStudents(true);
+            setSummary("");
+            setScores(Array.from({ length: 15 }, () => 0));
+            setHitList([]);
+            setNotHitList([]);
+            setRecommendations([]);
+            return;
+          }
           // No data for this coordinator/week; don't overwrite any existing summary from backend
+          setScores(Array.from({ length: 15 }, () => 0));
+          return;
+        }
+        if (weekEntries.length === 0) {
+          // No week entries but students exist
           setScores(Array.from({ length: 15 }, () => 0));
           return;
         }
@@ -225,13 +259,6 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
         setHitList(hits);
         setNotHitList(notHits);
 
-        const sentences = String(text).split(/[.!?]+/).map((s)=>s.trim()).filter(Boolean);
-        const unmatched = sentences.filter((s)=>{
-          const l = s.toLowerCase();
-          return !keywordSets.some((set)=> set.some((kw)=> l.includes(kw)));
-        });
-        setOtherActivities(unmatched.slice(0,5));
-
         // This fallback logic is now handled in the main loadSummary function
       };
 
@@ -272,11 +299,23 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
         try {
           console.log('Sending aggregated data to OpenAI:', data);
           
-          const openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
+          // Fetch CSRF cookie first
+          try {
+            await fetch(`${apiBase}/sanctum/csrf-cookie`, {
+              method: 'GET',
+              credentials: 'include',
+            });
+          } catch (csrfError) {
+            console.log('CSRF cookie fetch failed, continuing anyway:', csrfError);
+          }
+          
+          // Try POST first
+          let openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
             method: 'POST',
             headers: {
               ...authHeaders,
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/json',
+              'X-Requested-With': 'XMLHttpRequest'
             },
             credentials: 'include',
             body: JSON.stringify({
@@ -284,6 +323,20 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
               type: 'overall_summary'
             })
           });
+          
+          // If POST fails with 419, try GET with query params as fallback
+          if (!openAIResponse.ok && openAIResponse.status === 419) {
+            console.log('POST failed with 419, trying GET fallback');
+            const query = encodeURIComponent(JSON.stringify(data));
+            openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize?data=${query}&type=overall_summary`, {
+              method: 'GET',
+              headers: {
+                ...authHeaders,
+                'X-Requested-With': 'XMLHttpRequest'
+              },
+              credentials: 'include',
+            });
+          }
           
           console.log('OpenAI response status:', openAIResponse.status);
           
@@ -339,6 +392,13 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
           // capture AI contextual PO hits from backend (OpenAI-derived)
           if (Array.isArray(data?.poContextHit)) {
             poContextHitFromBackend = data.poContextHit;
+          }
+          
+          // Extract AI-generated recommendations from backend
+          if (data?.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
+            aiRecommendationsFromBackend = data.recommendations;
+            setRecommendations(data.recommendations);
+            console.log('Loaded AI recommendations from backend:', data.recommendations);
           }
           
           // Handle "overall" case - summarize returned learnings locally (no POST)
@@ -397,7 +457,7 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
               if (!/[.!?]$/.test(p)) p += '.';
               return p;
             };
-            // Send to OpenAI for polished summary
+              // Send to OpenAI for polished summary
             try {
               const openAIData = {
                 corrected_activities: activities,
@@ -407,7 +467,18 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
               
               console.log('Sending to OpenAI:', openAIData);
               
-              const openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
+              // Fetch CSRF cookie first
+              try {
+                await fetch(`${apiBase}/sanctum/csrf-cookie`, {
+                  method: 'GET',
+                  credentials: 'include',
+                });
+              } catch (csrfError) {
+                console.log('CSRF cookie fetch failed, continuing anyway:', csrfError);
+              }
+              
+              // Try POST first
+              let openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
                 method: 'POST',
                 headers: {
                   ...authHeaders,
@@ -420,6 +491,20 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
                   type: 'overall_summary'
                 })
               });
+              
+              // If POST fails with 419, try GET with query params as fallback
+              if (!openAIResponse.ok && openAIResponse.status === 419) {
+                console.log('POST failed with 419, trying GET fallback');
+                const query = encodeURIComponent(JSON.stringify(openAIData));
+                openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize?data=${query}&type=overall_summary`, {
+                  method: 'GET',
+                  headers: {
+                    ...authHeaders,
+                    'X-Requested-With': 'XMLHttpRequest'
+                  },
+                  credentials: 'include',
+                });
+              }
               
               if (openAIResponse.ok) {
                 const openAIResult = await openAIResponse.json();
@@ -482,11 +567,23 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
               try {
                 console.log('Sending data to OpenAI:', parsedData);
                 
-                const openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
+                // Fetch CSRF cookie first
+                try {
+                  await fetch(`${apiBase}/sanctum/csrf-cookie`, {
+                    method: 'GET',
+                    credentials: 'include',
+                  });
+                } catch (csrfError) {
+                  console.log('CSRF cookie fetch failed, continuing anyway:', csrfError);
+                }
+                
+                // Try POST first
+                let openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
                   method: 'POST',
                   headers: {
                     ...authHeaders,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
                   },
                   credentials: 'include',
                   body: JSON.stringify({
@@ -494,6 +591,20 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
                     type: 'overall_summary'
                   })
                 });
+                
+                // If POST fails with 419, try GET with query params as fallback
+                if (!openAIResponse.ok && openAIResponse.status === 419) {
+                  console.log('POST failed with 419, trying GET fallback');
+                  const query = encodeURIComponent(JSON.stringify(parsedData));
+                  openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize?data=${query}&type=overall_summary`, {
+                    method: 'GET',
+                    headers: {
+                      ...authHeaders,
+                      'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    credentials: 'include',
+                  });
+                }
                 
                 console.log('OpenAI response status:', openAIResponse.status);
                 
@@ -567,27 +678,55 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
                     
                     // Send extracted data to OpenAI for proper summarization
                     try {
-                      const openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
+                      const openAIData = {
+                        corrected_activities: activities,
+                        corrected_learnings: learnings,
+                        "summary for this section on a week": assessment
+                      };
+                      
+                      // Fetch CSRF cookie first
+                      try {
+                        await fetch(`${apiBase}/sanctum/csrf-cookie`, {
+                          method: 'GET',
+                          credentials: 'include',
+                        });
+                      } catch (csrfError) {
+                        console.log('CSRF cookie fetch failed, continuing anyway:', csrfError);
+                      }
+                      
+                      // Try POST first
+                      let openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
                         method: 'POST',
                         headers: {
                           ...authHeaders,
-                          'Content-Type': 'application/json'
+                          'Content-Type': 'application/json',
+                          'X-Requested-With': 'XMLHttpRequest'
                         },
                         credentials: 'include',
                         body: JSON.stringify({
-                          data: {
-                            corrected_activities: activities,
-                            corrected_learnings: learnings,
-                            "summary for this section on a week": assessment
-                          },
+                          data: openAIData,
                           type: 'overall_summary'
                         })
                       });
                       
+                      // If POST fails with 419, try GET with query params as fallback
+                      if (!openAIResponse.ok && openAIResponse.status === 419) {
+                        console.log('POST failed with 419, trying GET fallback');
+                        const query = encodeURIComponent(JSON.stringify(openAIData));
+                        openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize?data=${query}&type=overall_summary`, {
+                          method: 'GET',
+                          headers: {
+                            ...authHeaders,
+                            'X-Requested-With': 'XMLHttpRequest'
+                          },
+                          credentials: 'include',
+                        });
+                      }
+                      
                       if (openAIResponse.ok) {
-                        const openAIData = await openAIResponse.json();
-                        if (openAIData.summary && openAIData.summary.trim()) {
-                          const cleanSummary = openAIData.summary
+                        const openAIResult = await openAIResponse.json();
+                        if (openAIResult.summary && openAIResult.summary.trim()) {
+                          const cleanSummary = openAIResult.summary
                             .replace(/^["']|["']$/g, '')
                             .replace(/\\"/g, '"')
                             .replace(/\\n/g, ' ')
@@ -641,6 +780,13 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
           // Handle regular week summaries
           if (typeof data?.posHitExplanation === 'string') setPosHitText(data.posHitExplanation);
           if (typeof data?.posNotHitExplanation === 'string') setPosNotHitText(data.posNotHitExplanation);
+          
+          // Extract AI-generated recommendations from backend
+          if (data?.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
+            setRecommendations(data.recommendations);
+            console.log('Loaded AI recommendations from backend:', data.recommendations);
+          }
+          
           if (data?.summary) {
             const clean = String(data.summary)
               .replace(/<\s*\/? .*?>/g, ' ')
@@ -652,19 +798,44 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
               .trim();
 
             try {
-              const respAI = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
+              const openAIData = {
+                corrected_activities: Array.isArray(data.corrected_activities) ? data.corrected_activities : [],
+                corrected_learnings: Array.isArray(data.corrected_learnings) ? data.corrected_learnings : [],
+                'summary for this section on a week': clean,
+              };
+              
+              // Fetch CSRF cookie first
+              try {
+                await fetch(`${apiBase}/sanctum/csrf-cookie`, {
+                  method: 'GET',
+                  credentials: 'include',
+                });
+              } catch (csrfError) {
+                console.log('CSRF cookie fetch failed, continuing anyway:', csrfError);
+              }
+              
+              // Try POST first
+              let respAI = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
                 method: 'POST',
                 headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'include',
                 body: JSON.stringify({
-                  data: {
-                    corrected_activities: Array.isArray(data.corrected_activities) ? data.corrected_activities : [],
-                    corrected_learnings: Array.isArray(data.corrected_learnings) ? data.corrected_learnings : [],
-                    'summary for this section on a week': clean,
-                  },
+                  data: openAIData,
                   type: 'week_summary',
                 }),
               });
+              
+              // If POST fails with 419, try GET with query params as fallback
+              if (!respAI.ok && respAI.status === 419) {
+                console.log('POST failed with 419, trying GET fallback');
+                const query = encodeURIComponent(JSON.stringify(openAIData));
+                respAI = await fetch(`${apiBase}/api/v1/summary/openai-summarize?data=${query}&type=week_summary`, {
+                  method: 'GET',
+                  headers: { ...authHeaders, 'X-Requested-With': 'XMLHttpRequest' },
+                  credentials: 'include',
+                });
+              }
+              
               if (respAI.ok) {
                 const ai = await respAI.json();
                 if (ai?.summary) {
@@ -895,10 +1066,24 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
     }
   }
 
+  // Clear previous results immediately when dropdown values change
   useEffect(() => {
+    // Immediately clear all previous data and show loading
+    setLoading(true);
+    setSummary("");
+    setScores(Array.from({ length: 15 }, () => 0));
+    setHitList([]);
+    setNotHitList([]);
+    setRecommendations([]);
+    setPosHitText("");
+    setPosNotHitText("");
+    setError(null);
+    setNoSectionStudents(false);
+    
+    // Then load new data
     loadSummary();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [coordinatorId, week, refreshTrigger]);
+  }, [coordinatorId, sectionId, week, refreshTrigger]);
 
   // Notify parent with the latest exportable data snapshot
   useEffect(() => {
@@ -921,57 +1106,19 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
     }
     onExportReady({
       coordinatorId,
+      sectionId,
       week,
       summaryText: cleanSummary || 'No summary available.',
       scores: Array.isArray(scores) ? scores.slice() : [],
       hitList: Array.isArray(hitList) ? hitList.slice() : [],
       notHitList: Array.isArray(notHitList) ? notHitList.slice() : [],
-      otherActivities: Array.isArray(otherActivities) ? otherActivities.slice() : [],
       poDescriptions: PO_DESCRIPTIONS.slice(),
       exportedAt: new Date().toISOString(),
     });
-  }, [onExportReady, coordinatorId, week, summary, scores, hitList, notHitList, otherActivities, PO_DESCRIPTIONS]);
+  }, [onExportReady, coordinatorId, sectionId, week, summary, scores, hitList, notHitList, PO_DESCRIPTIONS]);
 
-  // Build recommendations based on PO scores and not-hit list
-  useEffect(() => {
-    try {
-      const PO_TITLES = Array.from({ length: 15 }, (_, i) => `PO${i + 1}`);
-      const notHitSet = new Set((notHitList || []).map((h) => h.po));
-      const guidance = [
-        "Reinforce core computing, algorithms, and problem analysis in tasks.",
-        "Adopt standards, best practices, and coding conventions in work.",
-        "Practice structured problem analysis and root-cause techniques.",
-        "Engage users to clarify requirements and validate needs.",
-        "Design and iterate solutions; include implementation and evaluation steps.",
-        "Address safety, security, and environment impacts in solutions.",
-        "Use appropriate tools, frameworks, and platforms effectively.",
-        "Improve teamwork, collaboration, and situational leadership.",
-        "Create realistic project plans, timelines, and milestones.",
-        "Strengthen written/oral communication and documentation.",
-        "Discuss societal/organizational impact of solutions produced.",
-        "Highlight ethics, privacy, and compliance considerations.",
-        "Pursue self-learning; document new skills gained weekly.",
-        "Participate in basic research, experiments, or mini-studies.",
-        "Incorporate Filipino culture/context where appropriate.",
-      ];
-      const next = [];
-      for (let i = 0; i < 15; i++) {
-        const po = PO_TITLES[i];
-        const score = Number(scores?.[i] || 0);
-        if (score <= 0 || notHitSet.has(po)) {
-          next.push({
-            po,
-            tip: guidance[i],
-            desc: PO_DESCRIPTIONS[i] || "",
-          });
-        }
-      }
-      // Include all relevant POs (no truncation)
-      setRecommendations(next);
-    } catch {
-      setRecommendations([]);
-    }
-  }, [scores, notHitList, PO_DESCRIPTIONS]);
+  // Recommendations are now loaded from AI-generated backend response
+  // No hardcoded recommendations - all come from OpenAI analysis
 
   // Initialize Bootstrap tooltips
   useEffect(() => {
@@ -1000,12 +1147,17 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
             {error}
           </div>
         )}
-        {loading && !summary && (
+        {loading && (
           <div className="mb-3 text-sm text-sky-800 bg-sky-50 border border-sky-200 rounded px-3 py-2">
             Loading summary…
           </div>
         )}
-        {!!summary && (
+        {noSectionStudents && !loading && (
+          <div className="mb-3 text-sm text-orange-700 bg-orange-50 border border-orange-200 rounded px-3 py-2">
+            No week report available for the selected section. This section has no students assigned.
+          </div>
+        )}
+        {!loading && !!summary && (
           <div className="text-gray-800 leading-relaxed">
             {week === "overall" ? (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
@@ -1019,11 +1171,11 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
             )}
           </div>
         )}
-        {!loading && !summary && (
+        {!loading && !summary && !noSectionStudents && (
           <div className="text-gray-500">No summary available.</div>
         )}
 
-        {summary && (
+        {!loading && summary && (
           <div className="mt-6 space-y-6">
             {/* PO Explanations */}
             <div className="grid md:grid-cols-2 gap-6">
@@ -1072,19 +1224,27 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
               </div>
             </div>
 
-            {/* Recommendations - placed directly after Achieved/Not Met sections */}
+            {/* AI-Generated Recommendations - placed directly after Achieved/Not Met sections */}
             {recommendations.length > 0 && (
               <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-4">
                 <h5 className="text-lg font-semibold text-emerald-800 mb-3">Recommendations for Improvement</h5>
-                {(() => {
-                  const codes = recommendations.map((r) => r.po).join(', ');
-                  const plan = recommendations.map((r) => `For ${r.po}, ${r.tip}`).join(' ');
-                  return (
-                    <p className="text-sm text-emerald-800 leading-relaxed">
-                      Based on the current results, the following program outcomes need more emphasis: {codes}. {plan} Work together to incorporate these focus areas into upcoming activities and evaluations.
-                    </p>
-                  );
-                })()}
+                {Array.isArray(recommendations) && recommendations.every(r => typeof r === 'string') ? (
+                  // AI-generated recommendations (array of strings)
+                  <ul className="list-disc list-inside space-y-2 text-sm text-emerald-800 leading-relaxed">
+                    {recommendations.map((rec, idx) => (
+                      <li key={`rec-${idx}`}>{rec}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  // Fallback format (array of objects)
+                  <ul className="list-disc list-inside space-y-2 text-sm text-emerald-800 leading-relaxed">
+                    {recommendations.map((rec, idx) => (
+                      <li key={`rec-${idx}`}>
+                        {typeof rec === 'string' ? rec : `${rec.po || ''}: ${rec.tip || rec.recommendation || ''}`}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
             )}
 
@@ -1287,18 +1447,6 @@ export default function ChairpersonSummary({ coordinatorId, week, refreshTrigger
               </div>
             </div>
 
-            {/* Other Activities */}
-            {otherActivities.length > 0 && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <h5 className="text-lg font-semibold text-yellow-800 mb-3">Other Activities Observed</h5>
-                <p className="text-sm text-yellow-700 mb-2">Activities that don't directly map to specific Program Outcomes:</p>
-                <ul className="list-disc list-inside space-y-1 text-sm text-yellow-700">
-                  {otherActivities.map((s, i) => (
-                    <li key={`oth-${i}`}>{s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
 
           </div>
         )}

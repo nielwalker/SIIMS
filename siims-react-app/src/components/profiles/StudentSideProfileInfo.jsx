@@ -28,6 +28,12 @@ const StudentSideProfileInfo = ({ profile }) => {
 
               <Text className="text-sm">{profile.program || "No Program"}</Text>
             </div>
+
+          {/* Section */}
+          <div className="flex flex-col">
+            <Text className="text-sm font-bold">Section</Text>
+            <Text className="text-sm">{profile.section?.name || profile.section_name || profile.section || "No Section"}</Text>
+          </div>
           </div>
         </div>
 

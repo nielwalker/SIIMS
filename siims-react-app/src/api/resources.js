@@ -71,10 +71,15 @@ export const GET_API_ROUTE_PATH = {
 // DELETE API Route Paths
 export const DELETE_API_ROUTE_PATH = {
   /**
-   * Endpoint for creating new coordinators.
+   * Endpoint for deleting coordinators.
    */
   coordinators: "/users/v2/coordinators",
-}
+
+  /**
+   * Endpoint for deleting sections.
+   */
+  sections: "/api/v1/sections",
+};
 
 // POST API Route Paths
 export const POST_API_ROUTE_PATH = {
@@ -91,7 +96,7 @@ export const POST_API_ROUTE_PATH = {
   /**
    * Endpoint for importing and assigning sections.
    */
-  sections: "/sections",
+  sections: "/api/v1/sections",
 };
 
 // PUT API Route Paths
@@ -129,5 +134,10 @@ export const PUT_API_ROUTE_PATH = {
   /**
    * Endpoint for updating existing chairpersons.
    */
-  chairpersons: "/users/v2/chairpersons"
+  chairpersons: "/users/v2/chairpersons",
+
+  /**
+   * Endpoint for updating existing sections.
+   */
+  sections: "/api/v1/sections",
 };

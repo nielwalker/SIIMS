@@ -9,17 +9,20 @@ const SectionForm = ({
     name: "",
     limit: 0,
     class_list: null,
+    coordinator_id: "",
   },
   requiredFields = {
     name: true,
     limit: true,
     class_list: null,
+    coordinator_id: true,
   },
   handleInputChange = () => {},
   onChange = () => {},
   errors = {},
   accept = "csv",
   maxSize = "20MB",
+  coordinators = [],
 }) => {
   return (
     <div>
@@ -69,6 +72,32 @@ const SectionForm = ({
             />
             {errors.limit && (
               <Text className="text-red-500">{errors.limit[0]}</Text>
+            )}
+          </FormField>
+
+          {/* Coordinator Assign */}
+          <FormField
+            label={"Coordinator"}
+            name={"coordinator_id"}
+            labelClassName="text-sm text-black font-semibold"
+            required={requiredFields["coordinator_id"]}
+          >
+            <select
+              name="coordinator_id"
+              className="outline-none text-black rounded-sm p-2 text-sm border bg-white"
+              onChange={handleInputChange}
+              value={String(sectionInfo.coordinator_id ?? "")}
+              required={requiredFields["coordinator_id"]}
+            >
+              <option value="">- Select Coordinator -</option>
+              {Array.isArray(coordinators) && coordinators.map((c) => (
+                <option key={String(c.id)} value={String(c.id)}>
+                  {c.name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || String(c.id)}
+                </option>
+              ))}
+            </select>
+            {errors.coordinator_id && (
+              <Text className="text-red-500">{errors.coordinator_id[0]}</Text>
             )}
           </FormField>
         </div>

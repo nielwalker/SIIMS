@@ -8,7 +8,7 @@ import useRequest from "../hooks/useRequest";
 import ManageHeader from "../components/common/ManageHeader";
 import DynamicDataGrid from "../components/tables/DynamicDataGrid";
 import useForm from "../hooks/useForm";
-import { Button, Tab, TabGroup, TabList } from "@headlessui/react";
+import { Button, Tab, TabGroup, TabList, Select } from "@headlessui/react";
 import StudentForm from "../components/forms/StudentForm";
 import FormModal from "../components/modals/FormModal";
 import { getRequest, postFormDataRequest, putRequest } from "../api/apiHelpers";
@@ -85,6 +85,7 @@ const ManageStudentsPage = ({ authorizeRole }) => {
   const [listOfCoordinators, setListOfCoordinators] = useState([]);
   const [listOfStudentStatuses, setListofStudentStatuses] = useState([]);
   const [listOfCompanies, setListOfCompanies] = useState([]);
+  const [listOfSections, setListOfSections] = useState([]);
 
   /**
    * File State
@@ -104,6 +105,8 @@ const ManageStudentsPage = ({ authorizeRole }) => {
   const [isOpenImport, setIsOpenImport] = useState(false);
   const [isAssignOpen, setIsAssignOpen] = useState(false);
   const [isAssignConfirmOpen, setIsAssignConfirmOpen] = useState(false);
+  const [isAssignSectionOpen, setIsAssignSectionOpen] = useState(false);
+  const [isAssignSectionConfirmOpen, setIsAssignSectionConfirmOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isVerifyOpen, setIsVerifyOpen] = useState(false);
 
@@ -126,6 +129,7 @@ const ManageStudentsPage = ({ authorizeRole }) => {
     program_id: "",
     coordinator_id: "",
     company_id: "",
+    section_id: "",
   });
 
   /**
@@ -307,6 +311,34 @@ const ManageStudentsPage = ({ authorizeRole }) => {
       }
     };
 
+    // Fetch sections for chairperson
+    const fetchListOfSections = async () => {
+      try {
+        const sectionsResponse = await getRequest({
+          url: "/api/v1/sections?requestedBy=chairperson",
+        });
+        
+        const sections = Array.isArray(sectionsResponse?.data) 
+          ? sectionsResponse.data 
+          : Array.isArray(sectionsResponse) 
+          ? sectionsResponse 
+          : [];
+        
+        // Normalize sections to { id, name }
+        const normalized = sections.map((s) => ({
+          id: s.id,
+          name: s.name || `Section ${s.id}`,
+          coordinator_id: s.coordinator_id,
+          program_id: s.program_id,
+        }));
+        
+        setListOfSections(normalized);
+      } catch (error) {
+        console.error(error);
+        setListOfSections([]);
+      }
+    };
+
     // ! Call to All
     fetchStudentStatusColor();
 
@@ -332,6 +364,11 @@ const ManageStudentsPage = ({ authorizeRole }) => {
       authorizeRole === "chairperson"
     ) {
       fetchListOfCoordinators();
+    }
+
+    // ! Fetch sections for chairperson
+    if (authorizeRole === "chairperson") {
+      fetchListOfSections();
     }
   }, []);
 
@@ -396,6 +433,69 @@ const ManageStudentsPage = ({ authorizeRole }) => {
     } catch (error) {
       console.error("Assignment error:", error);
       alert("Failed to assign students. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Function to assign student/s to section
+  const handleAssignToSection = async () => {
+    // Loading State
+    setLoading(true);
+
+    try {
+      // Ensure a section is selected
+      if (!formData.section_id) {
+        alert("Please select a section before confirming.");
+        setLoading(false);
+        return;
+      }
+
+      // Ensure students are selected
+      if (selectedRows.length === 0) {
+        alert("Please select at least one student to assign.");
+        setLoading(false);
+        return;
+      }
+
+      const selectedData = rows.filter((row) => selectedRows.includes(row.id));
+
+      // Extract only the ids from the selectedData and structure them with student_id attribute
+      const selectedIds = selectedData.map((student) => ({
+        student_id: student.id,
+      }));
+      
+      console.log("Selected students:", selectedIds);
+      console.log("Selected section:", formData.section_id);
+
+      // Prepare payload - the API expects section_id in body and URL, but validation might only check body
+      const payload = {
+        section_id: formData.section_id,
+        student_ids: selectedIds,
+      };
+
+      console.log("Assignment payload:", payload);
+
+      const response = await putRequest({
+        url: `/api/v1/sections/${formData.section_id}/assign`,
+        data: payload,
+      });
+
+      if (response) {
+        // Close Modals
+        setIsAssignSectionConfirmOpen(false);
+        setIsAssignSectionOpen(false);
+        // Reset form data
+        setFormValues({ ...formData, section_id: "" });
+        // Clear selected rows
+        setSelectedRows([]);
+        // Refresh the data
+        window.location.reload();
+        alert("Students assigned to section successfully!");
+      }
+    } catch (error) {
+      console.error("Assignment error:", error);
+      alert("Failed to assign students to section. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -739,21 +839,20 @@ const ManageStudentsPage = ({ authorizeRole }) => {
                     showVerifyButton={authorizeRole === "admin"}
                   />
                 )}
-                {/* Assign Button */}
-                {(authorizeRole === "admin" ||
-                  authorizeRole === "chairperson") && (
+                {/* Assign to Section Button */}
+                {authorizeRole === "chairperson" && (
                   <div className="my-3">
                     <Button
-                      // onClick={() => setIsAssignOpen(!isAssignOpen)}
-                      onClick={() => setIsAssignOpen(!isAssignOpen)}
+                      onClick={() => setIsAssignSectionOpen(!isAssignSectionOpen)}
                       className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold ${
                         selectedRows.length > 0
-                          ? "bg-green-500 text-white hover:bg-green-600 transition"
+                          ? "bg-blue-500 text-white hover:bg-blue-600 transition"
                           : "bg-gray-400 text-gray-200 cursor-not-allowed"
                       }`}
+                      disabled={selectedRows.length === 0}
                     >
                       <UserCheck className="w-5 h-5" />
-                      Assign Student
+                      Assign to Section
                     </Button>
                   </div>
                 )}
@@ -772,20 +871,6 @@ const ManageStudentsPage = ({ authorizeRole }) => {
                     />
                   )}
                 </RoleBasedView>
-
-                {/* Assign Modal */}
-                <FormModal
-                  isOpen={isAssignOpen}
-                  setIsOpen={setIsAssignOpen}
-                  modalTitle="Assign Student"
-                  onSubmit={() => setIsAssignConfirmOpen(!isAssignConfirmOpen)}
-                >
-                  <AssignStudentForm
-                    selectedCoordinatorID={formData.coordinator_id}
-                    handleSelectedCoordinatorID={handleInputChange}
-                    coordinators={listOfCoordinators}
-                  />
-                </FormModal>
 
                 {/* Add Form Modal */}
                 <FormModal
@@ -832,14 +917,61 @@ const ManageStudentsPage = ({ authorizeRole }) => {
                   handleDelete={deleteStudent}
                 />
 
-                {/* Assign Form Modal */}
-                <AssignConfirmModal
-                  open={isAssignConfirmOpen}
-                  setOpen={setIsAssignConfirmOpen}
-                  title="Assign Student To A Coordinator"
-                  message="Are you sure you want to assign this/these student/s to the selected coordinator? This action can be reviewed but not undone."
-                  handleAssign={handleAssign}
-                />
+                {/* Assign to Section Modal */}
+                {authorizeRole === "chairperson" && (
+                  <>
+                    <FormModal
+                      isOpen={isAssignSectionOpen}
+                      setIsOpen={setIsAssignSectionOpen}
+                      modalTitle="Assign Student to Section"
+                      onSubmit={() => setIsAssignSectionConfirmOpen(!isAssignSectionConfirmOpen)}
+                    >
+                      <div className="space-y-4">
+                        <Text>Select a section to assign students:</Text>
+                        <Select
+                          name="section_id"
+                          className="border rounded px-4 py-2 w-full"
+                          value={formData.section_id}
+                          onChange={handleInputChange}
+                        >
+                          <option value="">-- Select Section --</option>
+                          {listOfSections.map((section) => {
+                            const coordinator = listOfCoordinators.find(c => String(c.id) === String(section.coordinator_id));
+                            const coordName = coordinator ? coordinator.name : section.coordinator_id || 'No Coordinator';
+                            return (
+                              <option key={section.id} value={section.id}>
+                                {section.name} {coordName ? `(Coordinator: ${coordName})` : ''}
+                              </option>
+                            );
+                          })}
+                        </Select>
+                        {selectedRows.length > 0 && (
+                          <div className="mt-4 p-3 bg-gray-50 rounded">
+                            <Text className="text-sm font-semibold">Selected Students ({selectedRows.length}):</Text>
+                            <ul className="list-disc ml-6 mt-2 text-sm text-gray-600">
+                              {rows.filter(row => selectedRows.includes(row.id)).slice(0, 5).map((student) => (
+                                <li key={student.id}>
+                                  {student.first_name} {student.last_name} ({student.id})
+                                </li>
+                              ))}
+                              {selectedRows.length > 5 && (
+                                <li className="text-gray-500">... and {selectedRows.length - 5} more</li>
+                              )}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </FormModal>
+
+                    <AssignConfirmModal
+                      open={isAssignSectionConfirmOpen}
+                      setOpen={setIsAssignSectionConfirmOpen}
+                      title="Assign Student To A Section"
+                      message={`Are you sure you want to assign ${selectedRows.length} student(s) to the selected section? This action can be reviewed but not undone.`}
+                      handleAssign={handleAssignToSection}
+                    />
+                  </>
+                )}
 
                 {/* Import Form Modal */}
                 <FormModal
@@ -906,6 +1038,8 @@ const ManageStudentsPage = ({ authorizeRole }) => {
               onSelectionModelChange={handleRowSelection} // Handle selection change
               getRowId={(row) => row.id} // Define the row ID
               requestedBy={authorizeRole}
+              scrollable={authorizeRole === "chairperson"} // Enable scrolling for chairperson
+              scrollableHeight={600} // Set scrollable height
             />
           </TabGroup>
         </div>

@@ -49,6 +49,26 @@ class ChairSummaryAdapter
         return ['hit' => $hit, 'notHit' => $notHit];
     }
 
+    private function extractRecommendations(?string $raw): array
+    {
+        $recommendations = [];
+        if (!$raw) return $recommendations;
+        $content = (string)$raw;
+        $content = preg_replace_callback('/```json[\s\S]*?```/i', function ($m) {
+            return preg_replace('/```json|```/i', '', $m[0]);
+        }, $content) ?? $content;
+        $decoded = json_decode($content, true);
+        if (is_array($decoded)) {
+            $recs = $decoded['recommendations'] ?? [];
+            if (is_array($recs)) {
+                $recommendations = array_values(array_filter(array_map(function($r) {
+                    return is_string($r) ? trim($r) : (is_array($r) && isset($r['recommendation']) ? trim($r['recommendation']) : '');
+                }, $recs)));
+            }
+        }
+        return $recommendations;
+    }
+
     private function extractPoHitTypes(?string $raw): array
     {
         $word = [];
@@ -90,17 +110,77 @@ class ChairSummaryAdapter
         if ($useGPT && $apiKey && $clean) {
             try {
                 $weekLabel = $week ? (string)$week : 'the selected week';
-                $sys = "You are an evaluator for BSIT internship journals.\n\nYour job is to:\n1. Correct and refine Activities and Learnings (grammar, punctuation, structure) without changing meaning.\n2. Produce a section-wide weekly summary in 2–3 sentences, third-person only (no I/me/we).\n3. Identify Program Outcomes (PO1–PO15) achieved (hit) and not achieved with brief reasons.\n4. Additionally, provide TWO distinct PO hit lists: (a) word-based hits (po_word_hit) when clear keywords/phrases appear; (b) context-based hits (po_context_hit) when the prose implies achievement even without explicit keywords.\nStart the summary with: 'In week {$weekLabel} the students ...'. Return STRICT JSON ONLY with keys: corrected_activities (array of strings), corrected_learnings (array of strings), 'summary for this section on a week' (string), pos_hit (array of {po, reason}), pos_not_hit (array of {po, reason}), po_word_hit (array of PO codes like ['PO1','PO3']), po_context_hit (array of PO codes like ['PO2']).";
-                $usr = "Combined student reports for the week (cleaned):\n".$clean;
-                $resp = Http::withToken($apiKey)->timeout(30)->post('https://api.openai.com/v1/chat/completions', [
+                
+                // Comprehensive PO descriptions for context understanding
+                $poDescriptions = [
+                    'PO1' => 'Apply knowledge of computing, science, and mathematics appropriate to the discipline.',
+                    'PO2' => 'Analyze a complex computing problem and apply principles of computing and other relevant disciplines to identify solutions.',
+                    'PO3' => 'Design, implement, and evaluate a computing-based solution to meet a given set of computing requirements in the context of the program\'s discipline.',
+                    'PO4' => 'Use current techniques, skills, and tools necessary for computing practice.',
+                    'PO5' => 'Function effectively as a member or leader of a team engaged in activities appropriate to the program\'s discipline.',
+                    'PO6' => 'Communicate effectively with a range of audiences.',
+                    'PO7' => 'Analyze the local and global impact of computing on individuals, organizations, and society.',
+                    'PO8' => 'Recognize professional responsibilities and make informed judgments in computing practice based on legal and ethical principles.',
+                    'PO9' => 'Function effectively on teams to accomplish a common goal.',
+                    'PO10' => 'Identify and analyze user needs and take them into account in the selection, creation, evaluation, and administration of computer-based systems.',
+                    'PO11' => 'Design and develop computing solutions that integrate computing and non-computing requirements.',
+                    'PO12' => 'Apply appropriate techniques and tools for the specification, design, implementation, and testing of computer systems.',
+                    'PO13' => 'Recognize the need for and engage in continuing professional development.',
+                    'PO14' => 'Contribute effectively to the development of computing solutions in a team environment.',
+                    'PO15' => 'Demonstrate understanding of Filipino culture, values, and heritage in the context of computing solutions.'
+                ];
+                
+                $sys = "You are an expert evaluator for BSIT (Bachelor of Science in Information Technology) internship journals. Your role is to analyze student internship reports and assess Program Outcomes (POs) achievement.
+
+PROGRAM OUTCOMES (PO1-PO15) CONTEXT:
+".implode("\n", array_map(function($code, $desc) {
+    return "{$code}: {$desc}";
+}, array_keys($poDescriptions), $poDescriptions))."
+
+YOUR TASKS:
+1. Correct and refine Activities and Learnings (improve grammar, punctuation, structure) without changing meaning.
+2. Produce a section-wide weekly summary (2-3 sentences) in THIRD-PERSON ONLY (use: students, they, their, them - NEVER use I, me, we, us, our).
+3. Identify Program Outcomes achieved (pos_hit) and NOT achieved (pos_not_hit) with specific, contextual reasons based on the PO descriptions above.
+4. Provide TWO distinct PO hit classifications:
+   - po_word_hit: Array of PO codes where explicit keywords/phrases from PO descriptions appear (e.g., ['PO1','PO4'])
+   - po_context_hit: Array of PO codes where achievement is implied through context even without explicit keywords (e.g., ['PO5','PO6'])
+5. Generate realistic, actionable RECOMMENDATIONS for improvement (recommendations) based on:
+   - POs that were NOT achieved (pos_not_hit)
+   - Patterns observed in student reports
+   - Areas needing more emphasis for future improvement
+   - Write recommendations in THIRD-PERSON (e.g., 'It is recommended that students focus on...' or 'The program should consider...')
+   - Make recommendations specific, practical, and relevant to BSIT internship context
+   - Provide 3-5 realistic recommendations
+
+CRITICAL REQUIREMENTS:
+- Understand the FULL CONTEXT of each PO before assigning it
+- For po_context_hit: Infer PO achievement from descriptions, actions, and results even if exact keywords are missing
+- For recommendations: Generate thoughtful, professional suggestions that sound like real academic recommendations
+- NEVER use first-person language in summary or recommendations
+- Start the summary with: 'In week {$weekLabel}, the students...'
+
+Return STRICT VALID JSON ONLY with these keys:
+- corrected_activities: array of strings
+- corrected_learnings: array of strings  
+- 'summary for this section on a week': string
+- pos_hit: array of {po: string, reason: string}
+- pos_not_hit: array of {po: string, reason: string}
+- po_word_hit: array of PO codes like ['PO1','PO3']
+- po_context_hit: array of PO codes like ['PO2','PO5']
+- recommendations: array of strings (3-5 realistic, third-person recommendations)";
+                
+                $usr = "Combined student internship reports for the week (cleaned):\n".$clean;
+                
+                $resp = Http::withToken($apiKey)->timeout(60)->post('https://api.openai.com/v1/chat/completions', [
                     'model' => 'gpt-4o-mini',
                     'messages' => [
                         ['role' => 'system', 'content' => $sys],
                         ['role' => 'user', 'content' => $usr],
                     ],
-                    'temperature' => 0.4,
-                    'max_tokens' => 220,
+                    'temperature' => 0.5,
+                    'max_tokens' => 2000, // Increased for better recommendations
                 ]);
+                
                 if ($resp->ok()) {
                     $data = $resp->json();
                     $content = $data['choices'][0]['message']['content'] ?? null;
@@ -126,6 +206,7 @@ class ChairSummaryAdapter
 
         $pos = $this->extractPosArrays($rawContent);
         $poTypes = $this->extractPoHitTypes($rawContent);
+        $recommendations = $this->extractRecommendations($rawContent);
         $posHitExplanation = $this->formatPosExplanation('Explanation on the POs hit', $pos['hit']);
         $posNotHitExplanation = $this->formatPosExplanation('Explanation on the POs not hit', $pos['notHit']);
 
@@ -136,6 +217,7 @@ class ChairSummaryAdapter
             'posNotHitExplanation' => $posNotHitExplanation,
             'poWordHit' => $poTypes['word'],
             'poContextHit' => $poTypes['context'],
+            'recommendations' => $recommendations,
         ];
     }
 }

@@ -119,10 +119,13 @@ export const deleteRequest = async ({ url, data = {}, params = {}, method = 'del
 export const putFormDataRequest = async ({url, data, timeout=220000})  => {
 
   try {
+    // Fetch the CSRF cookie
+    await axiosClient.get("/sanctum/csrf-cookie", {
+      withCredentials: true,
+    });
+
     const response = await axiosClient.put(url, data, {
-      headers: {
-        "Content-Type": "multipart/form-data", // Ensures the request is sent as form-data
-      },
+      // Don't set Content-Type explicitly for FormData - let browser set it with boundary
       timeout: timeout, // Set the timeout for this request (default: 60 seconds)
     });
     return response.data;
@@ -130,19 +133,20 @@ export const putFormDataRequest = async ({url, data, timeout=220000})  => {
     if (error.code === 'ECONNABORTED') {
       // Timeout error
       console.error("Request timed out:", error);
-      throw new Error("Request timed out");
+      throw error;
     } else if (error.response) {
       // Response errors (e.g., 400 or 500 status codes)
       console.error("Error response:", error.response);
-      throw new Error(error.response?.data?.message || "Error uploading file");
+      // Throw the full error object so we can access response.data
+      throw error;
     } else if (error.request) {
       // Request was made but no response was received
       console.error("No response received:", error.request);
-      throw new Error("No response from server");
+      throw error;
     } else {
       // General errors (e.g., setup errors)
       console.error("Error setting up request:", error.message);
-      throw new Error("An error occurred while sending the request");
+      throw error;
     }
   }
 

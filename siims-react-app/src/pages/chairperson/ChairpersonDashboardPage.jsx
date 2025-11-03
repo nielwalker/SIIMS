@@ -16,6 +16,8 @@ export default function ChairpersonDashboardPage() {
   const [dashboard, setDashboard] = useState(loaderData.dashboard || null);
   const [coordinators, setCoordinators] = useState([]);
   const [selectedCoordinatorId, setSelectedCoordinatorId] = useState("");
+  const [coordinatorSections, setCoordinatorSections] = useState([]);
+  const [selectedSectionId, setSelectedSectionId] = useState("");
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -27,9 +29,11 @@ export default function ChairpersonDashboardPage() {
       if (!summaryRef.current) return;
       const content = summaryRef.current.innerHTML;
       const coord = exportSnapshot?.coordinatorId || selectedCoordinatorId || '';
+      const sec = exportSnapshot?.sectionId || selectedSectionId || '';
+      const secName = sec ? coordinatorSections.find(s => String(s.id) === String(sec))?.name : '';
       const wk = exportSnapshot?.week ?? selectedWeek;
       const when = new Date().toLocaleString();
-      const title = `Chair_Summary_${coord}_week_${wk || 'overall'}`;
+      const title = `Chair_Summary_${coord}${sec ? `_${secName}` : ''}_week_${wk || 'overall'}`;
       const html = `<!doctype html>
 <html>
   <head>
@@ -70,7 +74,7 @@ export default function ChairpersonDashboardPage() {
   <body>
     <div class="header">
       <h2>Chairperson Summary</h2>
-      <div class="meta">Coordinator ID: ${coord} • Week: ${wk || 'overall'} • Exported: ${when}</div>
+      <div class="meta">Coordinator ID: ${coord}${secName ? ` • Section: ${secName}` : ''} • Week: ${wk || 'overall'} • Exported: ${when}</div>
     </div>
     <div class="section">
       ${content}
@@ -202,6 +206,8 @@ export default function ChairpersonDashboardPage() {
           if (!cancelled) {
             setAvailableWeeks([]);
             setSelectedWeek("");
+            setCoordinatorSections([]);
+            setSelectedSectionId("");
           }
           return;
         }
@@ -211,6 +217,21 @@ export default function ChairpersonDashboardPage() {
           Accept: "application/json",
           Authorization: `Bearer ${JSON.parse(localStorage.getItem("ACCESS_TOKEN"))}`,
         };
+
+        // Load sections for selected coordinator (for dropdown when multiple)
+        try {
+          const rs = await fetch(`${apiBase}/api/v1/sections?requestedBy=chairperson`, { headers, credentials: 'include' });
+          const ps = await rs.json().catch(() => []);
+          const allSecs = Array.isArray(ps?.data) ? ps.data : (Array.isArray(ps) ? ps : []);
+          const secs = allSecs.filter((s) => String(s.coordinator_id ?? s.coordinatorId) === String(selectedCoordinatorId));
+          if (!cancelled) {
+            setCoordinatorSections(secs.map((s) => ({ id: s.id, name: s.name })));
+            // Do not auto-select; user can choose specific section if multiple
+            setSelectedSectionId("");
+          }
+        } catch (_) {
+          if (!cancelled) { setCoordinatorSections([]); setSelectedSectionId(""); }
+        }
 
         // 1) Get all students in chairperson program and filter by coordinatorId
         const r = await fetch(`${apiBase}/api/v1/chairperson/students`, { headers, credentials: "include" });
@@ -364,7 +385,10 @@ export default function ChairpersonDashboardPage() {
                 <label className="text-sm font-semibold text-gray-700">Coordinator:</label>
                 <select
                   value={selectedCoordinatorId}
-                  onChange={(e) => setSelectedCoordinatorId(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedCoordinatorId(e.target.value);
+                    setSelectedSectionId(""); // Reset section when coordinator changes
+                  }}
                   className="px-3 py-2 border rounded text-gray-900 bg-white"
                 >
                   <option value="">Select Coordinator</option>
@@ -376,6 +400,34 @@ export default function ChairpersonDashboardPage() {
                   )}
                 </select>
               </div>
+              {/* Section dropdown - only show if coordinator has multiple sections */}
+              {selectedCoordinatorId && coordinatorSections.length > 1 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-700">Section:</label>
+                  <select
+                    value={selectedSectionId}
+                    onChange={(e) => {
+                      setSelectedSectionId(e.target.value);
+                      setRefreshTrigger(prev => prev + 1);
+                    }}
+                    className="px-3 py-2 border rounded text-gray-900 bg-white"
+                  >
+                    <option value="">All Sections</option>
+                    {coordinatorSections.map((sec) => (
+                      <option key={sec.id} value={sec.id}>{sec.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {/* Show section name if only one section exists */}
+              {selectedCoordinatorId && coordinatorSections.length === 1 && (
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-semibold text-gray-700">Section:</label>
+                  <span className="px-3 py-2 bg-gray-100 border rounded text-gray-700">
+                    {coordinatorSections[0].name}
+                  </span>
+                </div>
+              )}
               <div className="flex items-center gap-2">
                 <label className="text-sm font-semibold text-gray-700">Week:</label>
                 <select
@@ -418,7 +470,8 @@ export default function ChairpersonDashboardPage() {
             {!!selectedCoordinatorId && (selectedWeek === "overall" || !!selectedWeek) && (
               <div ref={summaryRef}>
                 <ChairpersonSummary 
-                  coordinatorId={selectedCoordinatorId} 
+                  coordinatorId={selectedCoordinatorId}
+                  sectionId={selectedSectionId || null}
                   week={selectedWeek} 
                   refreshTrigger={refreshTrigger}
                   onExportReady={setExportSnapshot}

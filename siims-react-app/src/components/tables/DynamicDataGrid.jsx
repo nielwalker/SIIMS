@@ -81,6 +81,10 @@ const DynamicDataGrid = React.memo(
 
     // Requested by
     requestedBy = "",
+
+    // Scrollable mode (disable pagination)
+    scrollable = false,
+    scrollableHeight = 600, // Default height in pixels
   }) => {
     const [totalCount, setTotalCount] = useState(0); // Total count of records
     const [loading, setLoading] = useState(true); // Loading state
@@ -88,12 +92,16 @@ const DynamicDataGrid = React.memo(
     const [searchTerm, setSearchTerm] = useState(""); // Search term
     const [paginationModel, setPaginationModel] = useState({
       page: 0, // Current page
-      pageSize: 5, // Items per page
+      pageSize: scrollable ? 100 : 5, // Max 100 for free MUI version, otherwise default
     });
+    
+    // Ref to track if we're updating paginationModel programmatically (to prevent refetch)
+    const isUpdatingPaginationRef = React.useRef(false);
 
     // Use debounced search term to avoid sending request on every keystroke
     const debouncedSearchTerm = useDebouncedSearch(searchInput, 500); // 500ms debounce delay
 
+    // Fetch data - separate logic for scrollable vs paginated
     useEffect(() => {
       // Skip fetching when no url is supplied (allows consumer to feed rows directly)
       if (!url) {
@@ -107,8 +115,8 @@ const DynamicDataGrid = React.memo(
         const response = await getRequest({
           url: `/api/v1${url}`,
           params: {
-            page: paginationModel.page + 1,
-            perPage: paginationModel.pageSize,
+            page: scrollable ? 1 : paginationModel.page + 1, // Always fetch page 1 if scrollable
+            perPage: scrollable ? 100 : paginationModel.pageSize, // Max 100 for free MUI version
             search: searchTerm,
             requestedBy: requestedBy,
           },
@@ -116,13 +124,28 @@ const DynamicDataGrid = React.memo(
 
         if (response && response.data) {
           setRows(response.data);
-          setTotalCount(response.meta.total ?? 0);
+          const total = scrollable ? response.data.length : (response.meta.total ?? 0);
+          setTotalCount(total);
+          // When scrollable, update paginationModel to show all rows on one page
+          // Note: MUI DataGrid free version has max pageSize of 100, so we cap it there
+          if (scrollable && total > 0) {
+            isUpdatingPaginationRef.current = true;
+            // Cap at 100 for free MUI version (max allowed)
+            const cappedPageSize = Math.min(100, total);
+            setPaginationModel({ page: 0, pageSize: cappedPageSize });
+          }
         }
         setLoading(false);
       };
 
+      // Skip fetching if we're just updating paginationModel programmatically (for scrollable mode)
+      if (isUpdatingPaginationRef.current) {
+        isUpdatingPaginationRef.current = false;
+        return;
+      }
+
       fetchData();
-    }, [paginationModel, searchTerm, url]);
+    }, [paginationModel.page, paginationModel.pageSize, searchTerm, url, scrollable, requestedBy]);
 
     // Handle pagination model change
     const handlePaginationModelChange = (newPaginationModel) => {
@@ -154,26 +177,41 @@ const DynamicDataGrid = React.memo(
         {/* Top toolbar (removed pagination/search per request) */}
 
         {/* DataGrid component */}
-        <div style={{ width: "100%" }}>
+        <div style={{ width: "100%", height: scrollable ? `${scrollableHeight}px` : 'auto' }}>
           <StripedDataGrid
             disableRowSelectionOnClick={true}
             rows={rows}
             columns={columns}
             getRowHeight={() => 'auto'}
-            paginationMode="server" // Enable server-side pagination
+            paginationMode={scrollable ? "client" : "server"} // Client-side if scrollable, server-side otherwise
+            pagination={scrollable ? undefined : true} // Omit pagination prop when scrollable (will use CSS to hide)
             loading={loading}
-            rowCount={totalCount} // Total number of rows (from response.meta.total)
-            paginationModel={paginationModel} // Current pagination model
-            onPaginationModelChange={handlePaginationModelChange} // Pagination change handler
-            pageSizeOptions={pageSizeOptions} // Options for per page
+            rowCount={scrollable ? undefined : totalCount} // Omit rowCount when scrollable to avoid warning
+            paginationModel={paginationModel} // Use state value
+            onPaginationModelChange={scrollable ? undefined : handlePaginationModelChange} // Disable pagination handler if scrollable
+            pageSizeOptions={scrollable ? [] : pageSizeOptions} // No page size options if scrollable
             checkboxSelection={checkboxSelection}
             getRowClassName={(params) =>
               params.indexRelativeToCurrentPage % 2 === 0 ? "even" : "odd"
             }
-            slots={{ toolbar: GridToolbar }}
+            slots={scrollable ? { 
+              toolbar: GridToolbar,
+              pagination: () => null // Hide pagination footer completely
+            } : { toolbar: GridToolbar }}
             sx={{
-              // Auto height so rows grow to fit multi-line content
-              '&.MuiDataGrid-root': { height: 'auto' },
+              // Set fixed height if scrollable, otherwise auto
+              '&.MuiDataGrid-root': { 
+                height: scrollable ? `${scrollableHeight}px` : 'auto',
+              },
+              // Hide pagination footer when scrollable
+              ...(scrollable && {
+                '& .MuiDataGrid-footerContainer': {
+                  display: 'none',
+                },
+                '& .MuiTablePagination-root': {
+                  display: 'none',
+                },
+              }),
               "& .super-app-theme--header": {
                 backgroundColor: "hsl(215, 28%, 17%)", // Custom dark blue shade for bg-900
                 color: "white", // White text color for the header

@@ -39,8 +39,8 @@ class CoordinatorV2Controller extends UserController
         // Get authenticated user
         $authUser = Auth::user();
         
-        $query = $status === 'archived' ? Coordinator::onlyTrashed()->with(['user', 'program']) :
-        Coordinator::with(['user', 'program']);
+        $query = $status === 'archived' ? Coordinator::onlyTrashed()->with(['user', 'program', 'sections']) :
+        Coordinator::with(['user', 'program', 'sections']);
 
         // Check if role is Dean
         if ($authUser->hasRole('dean') && $requestedBy === 'dean') {

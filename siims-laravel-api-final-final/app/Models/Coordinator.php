@@ -40,6 +40,11 @@ class Coordinator extends Model
         return $this->hasMany(Student::class, 'coordinator_id');
     }
 
+    // This Coordinator has many sections
+    public function sections() {
+        return $this->hasMany(Section::class, 'coordinator_id');
+    }
+
     // This Coordinator belongs to a program
     public function program() {
         return $this->belongsTo(Program::class, 'program_id');

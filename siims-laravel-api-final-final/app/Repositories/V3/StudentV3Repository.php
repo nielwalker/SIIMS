@@ -75,7 +75,7 @@ class StudentV3Repository implements StudentV3RepositoryInterface
         // Define queries based on role
         $roleQueries = [
             'admin' => function ($query) {
-                $query->with(['user', 'program.college', 'status', 'studentStatus', 'coordinator.user'])
+                $query->with(['user', 'program.college', 'status', 'studentStatus', 'coordinator.user', 'section'])
                     ->withCount(['applications', 'endorsementLetterRequests']);
             },
             'coordinator' => function ($query) use ($user) {
@@ -83,6 +83,7 @@ class StudentV3Repository implements StudentV3RepositoryInterface
                     'user',
                     'program.college',
                     'studentStatus',
+                    'section',
                     'latestApplication',
                     'applications.applicationStatus',
                     'applications.workPost.office.company',
@@ -92,17 +93,17 @@ class StudentV3Repository implements StudentV3RepositoryInterface
                     ->withCount(['applications']);
             },
             'dean' => function ($query) use ($user) {
-                $query->with(['user', 'program', 'status', 'coordinator.user'])
+                $query->with(['user', 'program', 'status', 'coordinator.user', 'section'])
                     ->withCount(['applications', 'endorsementLetterRequests'])
                     ->whereHas('program.college', fn($q) => $q->where('dean_id', $user->id));
             },
             'chairperson' => function ($query) use ($user) {
-                $query->with(['user', 'status', 'coordinator.user', 'studentStatus'])
+                $query->with(['user', 'status', 'coordinator.user', 'studentStatus', 'section'])
                     ->withCount(['applications', 'endorsementLetterRequests'])
                     ->whereHas('program', fn($q) => $q->where('chairperson_id', $user->id));
             },
             'company' => function ($query) {
-                $query->with(['user', 'program', 'status', 'coordinator.user']);
+                $query->with(['user', 'program', 'status', 'coordinator.user', 'section']);
             },
         ];
 

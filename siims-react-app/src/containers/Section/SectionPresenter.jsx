@@ -34,6 +34,7 @@ const SectionPresenter = ({
   sectionFormData,
   sectionHandleInputChange,
   addNewSection,
+  coordinators,
 
   /** Data Grid Props */
   rows = [],
@@ -78,6 +79,7 @@ const SectionPresenter = ({
           sectionInfo={sectionFormData}
           handleInputChange={sectionHandleInputChange}
           addNewSection={addNewSection}
+          coordinators={coordinators}
         />
       </Modal>
 

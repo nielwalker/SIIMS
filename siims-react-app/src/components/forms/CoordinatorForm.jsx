@@ -40,6 +40,11 @@ const CoordinatorForm = ({
   },
   programs = [],
   errors = {},
+  // Sections management (edit mode only)
+  sectionsForCoordinator = [],
+  newSection = { name: "", limit: 0 },
+  handleNewSectionChange = () => {},
+  onCreateSection = () => {},
 }) => {
   return (
     <>

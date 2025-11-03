@@ -93,6 +93,17 @@ export const getStudentStaticColumns = ({
       width: 150,
       headerClassName: "super-app-theme--header",
     },
+    {
+      field: "section",
+      headerName: "Section",
+      width: 160,
+      headerClassName: "super-app-theme--header",
+      renderCell: (params) => {
+        const r = params.row || {};
+        const sectionName = r.section?.name || r.section_name || r.section || "—";
+        return <span>{sectionName || "—"}</span>;
+      },
+    },
     // Show company for chairperson
     ...(authorizeRole === "chairperson"
       ? [

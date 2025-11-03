@@ -91,6 +91,7 @@ const SectionContainer = ({ authorizeRole }) => {
    *
    */
   const [sections, setSections] = useState([]);
+  const [coordinators, setCoordinators] = useState([]);
 
   /**
    *
@@ -182,6 +183,7 @@ const SectionContainer = ({ authorizeRole }) => {
 
   useEffect(() => {
     fetchSections();
+    fetchCoordinators();
   }, []);
 
   useEffect(() => {
@@ -256,6 +258,27 @@ const SectionContainer = ({ authorizeRole }) => {
       setSelectedSection: setSelectedSection,
       setSections: setSections,
     });
+  };
+
+  const fetchCoordinators = async () => {
+    try {
+      const resp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/users/coordinators`, {
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${JSON.parse(localStorage.getItem('ACCESS_TOKEN'))}`,
+        },
+        credentials: 'include',
+      });
+      const payload = await resp.json().catch(() => []);
+      const list = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload) ? payload : []);
+      const normalized = list.map((c) => ({
+        id: c.id ?? c.user_id ?? c.coordinator_id,
+        name: [c.first_name || c.firstName, c.last_name || c.lastName].filter(Boolean).join(' ') || c.name || c.fullName || String(c.id)
+      })).filter((c) => c.id != null);
+      setCoordinators(normalized);
+    } catch (_) {
+      setCoordinators([]);
+    }
   };
 
   /**

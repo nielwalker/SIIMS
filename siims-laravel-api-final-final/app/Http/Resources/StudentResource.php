@@ -45,7 +45,12 @@ class StudentResource extends BaseResource
                     $this->coordinator->user->last_name ?? "",
                 ) : "No Coordinator",
                 "company" => $this->company ? $this->company->name : "—",
-                "company_name" => $this->company ? $this->company->name : "—"
+                "company_name" => $this->company ? $this->company->name : "—",
+                "section" => $this->section ? [
+                    "id" => $this->section->id,
+                    "name" => $this->section->name,
+                ] : null,
+                "section_name" => $this->section ? $this->section->name : null,
             ]);
         }
 
@@ -61,7 +66,12 @@ class StudentResource extends BaseResource
                     $this->coordinator->user->last_name ?? "",
                 ) : "No Coordinator",
                 "company" => $this->company ? $this->company->name : "—",
-                "company_name" => $this->company ? $this->company->name : "—"
+                "company_name" => $this->company ? $this->company->name : "—",
+                "section" => $this->section ? [
+                    "id" => $this->section->id,
+                    "name" => $this->section->name,
+                ] : null,
+                "section_name" => $this->section ? $this->section->name : null,
             ]);
         }
 
@@ -82,6 +92,11 @@ class StudentResource extends BaseResource
                'applications' => $this->applications,
                 'total_applications' => $this->applications_count,
                 'certificates' => $this->certificates,
+                "section" => $this->section ? [
+                    "id" => $this->section->id,
+                    "name" => $this->section->name,
+                ] : null,
+                "section_name" => $this->section ? $this->section->name : null,
             ]);
         }
 
@@ -95,7 +110,12 @@ class StudentResource extends BaseResource
                     $this->coordinator->user->last_name ?? "",
                 ) : "No Coordinator",
                 "company" => $this->company ? $this->company->name : "—",
-                "company_name" => $this->company ? $this->company->name : "—"
+                "company_name" => $this->company ? $this->company->name : "—",
+                "section" => $this->section ? [
+                    "id" => $this->section->id,
+                    "name" => $this->section->name,
+                ] : null,
+                "section_name" => $this->section ? $this->section->name : null,
             ]);
         }
 

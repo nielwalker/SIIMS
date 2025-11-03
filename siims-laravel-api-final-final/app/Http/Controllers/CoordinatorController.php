@@ -315,7 +315,7 @@ class CoordinatorController extends UserController
         // ! For Admin
         if($user->hasRole('admin')) {
             // Get All User (Coordinator) Info
-            $query = Coordinator::with(['user', 'program.college'])->withCount(['students']);
+            $query = Coordinator::with(['user', 'program.college', 'sections'])->withCount(['students']);
         }
 
         // ! For Dean
@@ -328,7 +328,7 @@ class CoordinatorController extends UserController
             }
 
             // Get all coordinators that belong to a specific college
-            $query = Coordinator::with(['user', 'program.college'])->withCount(['students'])->whereHas('program', function ($query) use ($college) {
+            $query = Coordinator::with(['user', 'program.college', 'sections'])->withCount(['students'])->whereHas('program', function ($query) use ($college) {
                 $query->where('college_id', $college->id);
             });
 
@@ -344,7 +344,7 @@ class CoordinatorController extends UserController
             }
 
              // Get all coordinators that belong to a specific program
-             $query = Coordinator::with(['user', 'program'])->withCount(['students'])->where('program_id', $program->id);
+             $query = Coordinator::with(['user', 'program', 'sections'])->withCount(['students'])->where('program_id', $program->id);
 
         }
 

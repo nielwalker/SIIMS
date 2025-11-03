@@ -23,6 +23,7 @@ Route::prefix('/summary')->group(function () {
     
     // Chair OpenAI summarization endpoint
     Route::post('/openai-summarize', [OpenAISummaryController::class, 'summarize'])->middleware('role:chairperson');
+    Route::get('/openai-summarize', [OpenAISummaryController::class, 'summarize'])->middleware('role:chairperson');
     Route::get('/openai-test', [OpenAISummaryController::class, 'test'])->middleware('role:chairperson');
     // Coordinator-specific OpenAI summarization endpoint
     Route::post('/openai-summarize-coordinator', [CoordinatorOpenAISummaryController::class, 'summarize'])->middleware('role:coordinator');

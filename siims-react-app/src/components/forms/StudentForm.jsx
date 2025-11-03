@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import LoginInfoFields from "./fields/LoginInfoFields";
 import PersonalInfoFields from "./fields/PersonalInfoFields";
 import AddressInfoFields from "./fields/AddressInfoFields";
@@ -53,6 +53,33 @@ const StudentForm = ({
   companies = [],
   errors = {},
 }) => {
+  const [availableSections, setAvailableSections] = useState([]);
+
+  // Load sections with assigned coordinators; filter by selected coordinator if set
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const resp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/sections?requestedBy=${authorizeRole || 'chairperson'}`, {
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${JSON.parse(localStorage.getItem('ACCESS_TOKEN'))}`,
+          },
+          credentials: 'include',
+        });
+        const payload = await resp.json().catch(() => []);
+        const list = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload) ? payload : []);
+        const filtered = list.filter((s) => (s.coordinator_id ?? s.coordinatorId) != null && String(s.coordinator_id ?? s.coordinatorId) !== '');
+        const byCoordinator = String(studentInfo.coordinator_id || '')
+          ? filtered.filter((s) => String(s.coordinator_id ?? s.coordinatorId) === String(studentInfo.coordinator_id))
+          : filtered;
+        if (!cancel) setAvailableSections(byCoordinator.map((s) => ({ id: s.id, name: s.name })));
+      } catch (_) {
+        if (!cancel) setAvailableSections([]);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [studentInfo.coordinator_id]);
   return (
     <>
       <div className="space-y-3">
@@ -139,7 +166,7 @@ const StudentForm = ({
             </div>
 
             {/* Program and Coordinator Assign */}
-            <div className="grid grid-cols-2 gap-2 mt-4">
+            <div className="grid grid-cols-3 gap-2 mt-4">
               {/* Student Program Assign */}
               <div>
                 <FormField
@@ -202,6 +229,31 @@ const StudentForm = ({
                     {errors.coordinator_id[0]}
                   </Text>
                 )}
+              </div>
+
+              {/* Student Section Assign (only sections that have coordinator) */}
+              <div>
+                <FormField
+                  label={"Section"}
+                  name={"section_id"}
+                  labelClassName="text-sm text-black font-semibold"
+                  required={false}
+                >
+                  <Select
+                    name="section_id"
+                    className="border data-[hover]:shadow data-[focus]:bg-blue-100 h-full outline-none p-2 text-black bg-white"
+                    aria-label="Select section"
+                    onChange={handleStudentInfoChange}
+                    value={String(studentInfo.section_id ?? "")}
+                  >
+                    <option value="" className="text-black">- Select a Section -</option>
+                    {availableSections.map((sec) => (
+                      <option key={String(sec.id)} value={String(sec.id)} className="text-black">
+                        {sec.name}
+                      </option>
+                    ))}
+                  </Select>
+                </FormField>
               </div>
             </div>
 

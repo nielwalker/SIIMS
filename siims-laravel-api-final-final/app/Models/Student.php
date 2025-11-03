@@ -32,6 +32,7 @@ class Student extends Model
         'program_id',
         'coordinator_id',
         'company_id',
+        'section_id',
         'age',
         'date_of_birth',
         'last_applied_at',
@@ -113,6 +114,12 @@ class Student extends Model
     public function company()
     {
         return $this->belongsTo(Company::class, 'company_id');
+    }
+
+    // This student belong to a section
+    public function section()
+    {
+        return $this->belongsTo(Section::class, 'section_id');
     }
 
     // This student have many endorsement letter requests

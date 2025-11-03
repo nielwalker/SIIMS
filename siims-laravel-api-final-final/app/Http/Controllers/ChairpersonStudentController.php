@@ -208,7 +208,7 @@ class ChairpersonStudentController extends Controller
         // $students = $program->students; // Assuming there's a `students` relationship in the Program model
 
         // Get all students with their latest application and company info
-        $students = Student::with(['user', 'coordinator.user', 'company', 'latestApplication.workPost.office.company', 'workExperiences'])->where('program_id', $program->id)->get();
+        $students = Student::with(['user', 'coordinator.user', 'company', 'section', 'latestApplication.workPost.office.company', 'workExperiences'])->where('program_id', $program->id)->get();
 
         $transformedStudents = $students->map(function ($student) {
             return $this->transform($student);
@@ -259,6 +259,11 @@ class ChairpersonStudentController extends Controller
                 : "No coordinator",
             "company" => $companyName,
             "company_name" => $companyName,
+            "section" => $student->section ? [
+                "id" => $student->section->id,
+                "name" => $student->section->name,
+            ] : null,
+            "section_name" => $student->section ? $student->section->name : null,
         ];
     }
 }

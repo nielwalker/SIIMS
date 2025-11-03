@@ -52,6 +52,16 @@ class CoordinatorResource extends BaseResource
         // Add or modify fields specific to the coordinator
         return array_merge($userData, [
             'total_students' => $this->students_count,
+            'sections' => $this->whenLoaded('sections', function () {
+                return $this->sections->map(function ($section) {
+                    return [
+                        'id' => $section->id,
+                        'name' => $section->name,
+                        'coordinator_id' => $section->coordinator_id,
+                        'program_id' => $section->program_id,
+                    ];
+                });
+            }, []),
             'deleted_at' => $this->formatDateOnlyDate($this->deleted_at),
         ]);
     }

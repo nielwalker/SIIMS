@@ -26,8 +26,20 @@ class OpenAISummaryController extends Controller
     public function summarize(Request $request)
     {
         try {
+            // Handle both POST (JSON body) and GET (query params) requests
             $data = $request->input('data');
             $type = $request->input('type', 'overall_summary');
+            
+            // If data comes as query param (GET request), parse it
+            if (!$data && $request->has('data')) {
+                $dataParam = $request->query('data');
+                if (is_string($dataParam)) {
+                    $decoded = json_decode(urldecode($dataParam), true);
+                    if (is_array($decoded)) {
+                        $data = $decoded;
+                    }
+                }
+            }
             
             Log::info('OpenAI Summarization Request', [
                 'type' => $type,

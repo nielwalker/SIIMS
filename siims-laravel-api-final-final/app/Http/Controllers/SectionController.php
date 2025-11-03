@@ -116,4 +116,46 @@ class SectionController extends Controller
         // Return
         return $this->jsonResponse($sectionResources);
     }
+
+    /**
+     * Summary of update: A public function that updates an existing section record.
+     * @param \App\Http\Requests\SectionRequest $sectionRequest
+     * @param string $section_id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function update(SectionRequest $sectionRequest, String $section_id)
+    {
+        // Get validated data
+        $validated = $sectionRequest->validated();
+
+        // Add filters - check both input (for FormData) and query (for query params)
+        $filters = [
+            'requestedBy' => $sectionRequest->input('requestedBy') ?? $sectionRequest->query('requestedBy'),
+        ];
+
+        // Update section
+        $section = $this->sectionService->update($section_id, $filters, $validated);
+
+        // Return
+        return $this->jsonResponse([
+            'message' => "Section updated successfully.",
+            'data' => new SectionResource($section),
+        ], 200);
+    }
+
+    /**
+     * Summary of delete: A public function that deletes a section record.
+     * @param string $section_id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function delete(String $section_id)
+    {
+        // Delete section
+        $this->sectionService->delete($section_id);
+
+        // Return
+        return $this->jsonResponse([
+            'message' => "Section deleted successfully.",
+        ], 200);
+    }
 }

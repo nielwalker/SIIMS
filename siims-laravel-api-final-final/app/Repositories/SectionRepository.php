@@ -154,6 +154,62 @@ class SectionRepository implements SectionRepositoryInterface
     }
 
     /**
+     * Summary of findById: Find a section by ID
+     * @param string $id
+     * @return \App\Models\Section|null
+     */
+    public function findById(string $id)
+    {
+        return $this->section->find($id);
+    }
+
+    /**
+     * Summary of update: A public function that updates a section.
+     * @param string $id
+     * @param array $validated
+     * @return \App\Models\Section
+     */
+    public function update(string $id, array $validated): Section
+    {
+        // Find section
+        $section = $this->findById($id);
+        
+        if (!$section) {
+            abort(Response::HTTP_NOT_FOUND, 'Section not found.');
+        }
+
+        // Update section
+        $section->update($validated);
+
+        // Add log
+        $this->addLog($section->id, 200, 'Update');
+
+        // Return
+        return $section;
+    }
+
+    /**
+     * Summary of delete: A public function that deletes a section.
+     * @param string $id
+     * @return bool
+     */
+    public function delete(string $id): bool
+    {
+        // Find section
+        $section = $this->findById($id);
+        
+        if (!$section) {
+            abort(Response::HTTP_NOT_FOUND, 'Section not found.');
+        }
+
+        // Add log
+        $this->addLog($section->id, 200, 'Delete');
+
+        // Delete section
+        return $section->delete();
+    }
+
+    /**
      * Summary of importAndAddToSection: A public function that imports and adds the student to the section.
      * @param string $id
      * @param \App\Http\Requests\SectionRequest $sectionRequest

@@ -84,6 +84,26 @@ export const getCoordinatorStaticColumns = ({
       width: 300,
       headerClassName: "super-app-theme--header",
     },
+    {
+      field: "sections",
+      headerName: "Section(s)",
+      width: 260,
+      headerClassName: "super-app-theme--header",
+      renderCell: (params) => {
+        const r = params.row || {};
+        // Try a variety of shapes commonly returned by APIs
+        const list = Array.isArray(r.sections)
+          ? r.sections
+          : (Array.isArray(r.section_list) ? r.section_list : []);
+        const fromProps = r.section || r.section_name || r.sections_names;
+        if (list.length) {
+          const names = list.map((s) => s?.name || s).filter(Boolean).slice(0, 3).join(', ');
+          const more = list.length > 3 ? ` +${list.length - 3}` : '';
+          return <span>{names}{more}</span>;
+        }
+        return <span>{fromProps || '—'}</span>;
+      },
+    },
 
     {
       field: "gender",

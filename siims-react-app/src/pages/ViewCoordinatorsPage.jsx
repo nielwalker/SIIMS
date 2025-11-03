@@ -6,7 +6,7 @@ import { Button } from "@headlessui/react";
 import useForm from "../hooks/useForm";
 import FormModal from "../components/modals/FormModal";
 import CoordinatorForm from "../components/forms/CoordinatorForm";
-import { getRequest, postFormDataRequest } from "../api/apiHelpers";
+import { getRequest, postFormDataRequest, putFormDataRequest, putRequest, deleteRequest } from "../api/apiHelpers";
 import useRequest from "../hooks/useRequest";
 import DeleteConfirmModal from "../components/modals/DeleteConfirmModal";
 import ImportCoordinatorForm from "../components/forms/ImportCoordinatorForm";
@@ -39,6 +39,7 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
 
   // Container State for Lists
   const [listOfPrograms, setListOfPrograms] = useState([]);
+  const [allCoordinators, setAllCoordinators] = useState([]);
 
   /**
    * File State
@@ -62,6 +63,22 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
   const [isEditOpen, setEditIsOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [isOpenImport, setIsOpenImport] = useState(false);
+
+  // Section creation modal state
+  const [isCreateSectionOpen, setIsCreateSectionOpen] = useState(false);
+  const [sectionFormData, setSectionFormData] = useState({ name: "", coordinator_id: "", program_id: "" });
+  // Section edit state
+  const [editingSection, setEditingSection] = useState(null);
+  const [editSectionFormData, setEditSectionFormData] = useState({ name: "", coordinator_id: "", program_id: "" });
+  const [isDeleteSectionOpen, setIsDeleteSectionOpen] = useState(false);
+  const [sectionToDelete, setSectionToDelete] = useState(null);
+  // Bulk assign section modal state
+  const [isBulkAssignSectionOpen, setIsBulkAssignSectionOpen] = useState(false);
+  const [selectedCoordinatorIds, setSelectedCoordinatorIds] = useState([]);
+  const [allSections, setAllSections] = useState([]);
+  const [bulkAssignSectionId, setBulkAssignSectionId] = useState("");
+  const [bulkAssignSectionName, setBulkAssignSectionName] = useState("");
+
 
   /**
    *
@@ -94,6 +111,64 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
         : GET_API_ROUTE_PATH.coordinators
     );
   }, [selectedStatus]);
+
+  // Load all sections for bulk assignment
+  useEffect(() => {
+    fetchAllSections();
+  }, []);
+
+  // Fetch all coordinators for section modal
+  const fetchAllCoordinators = async () => {
+    try {
+      const resp = await getRequest({ url: `/api/v1/users/coordinators/lists` });
+      const coordList = Array.isArray(resp) ? resp : (Array.isArray(resp?.data) ? resp.data : []);
+      // Normalize coordinators to have id, first_name, last_name, and name
+      const normalized = coordList.map((c) => {
+        const id = c.id ?? c.user_id ?? c.coordinator_id ?? "";
+        // Check if API returns full name directly (from getAllListsOfCoordinators)
+        const fullName = c.name ?? "";
+        // Try to extract first/last names, or use full name
+        const first = c.first_name ?? c.firstName ?? c.user?.first_name ?? "";
+        const middle = c.middle_name ?? c.middleName ?? c.user?.middle_name ?? "";
+        const last = c.last_name ?? c.lastName ?? c.user?.last_name ?? "";
+        // If we have full name but no separate names, use full name
+        const displayName = fullName || (first || last ? `${first} ${middle} ${last}`.trim() : String(id));
+        return { 
+          id: String(id), 
+          first_name: first, 
+          middle_name: middle, 
+          last_name: last,
+          name: displayName
+        };
+      });
+      setAllCoordinators(normalized);
+    } catch (_) {
+      setAllCoordinators([]);
+    }
+  };
+
+  // Refresh sections and coordinators when modal opens and clear edit state when closing
+  useEffect(() => {
+    if (isCreateSectionOpen) {
+      fetchAllSections();
+      fetchAllCoordinators();
+    } else {
+      // Clear edit state when modal closes
+      setEditingSection(null);
+      setEditSectionFormData({ name: "", coordinator_id: "", program_id: "" });
+    }
+  }, [isCreateSectionOpen]);
+
+  const fetchAllSections = async () => {
+    try {
+      const resp = await getRequest({ url: `/api/v1/sections?requestedBy=${authorizeRole || 'chairperson'}` });
+      const payload = resp;
+      const list = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload) ? payload : []);
+      setAllSections(list);
+    } catch (_) {
+      setAllSections([]);
+    }
+  };
 
   // Use the useForm hook to manage form data
   const { formData, handleInputChange, resetForm, setFormValues } = useForm({
@@ -344,6 +419,214 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
     }
   };
 
+  // Create standalone section
+  const createSection = async () => {
+    if (!sectionFormData.name || !sectionFormData.coordinator_id || !sectionFormData.program_id) {
+      alert('Please fill in Section Name, Coordinator, and Program.');
+      return;
+    }
+    try {
+      setLoading(true);
+      const fd = new FormData();
+      fd.append('name', String(sectionFormData.name || ''));
+      fd.append('coordinator_id', String(sectionFormData.coordinator_id));
+      fd.append('program_id', String(sectionFormData.program_id));
+      fd.append('requestedBy', String(authorizeRole || 'chairperson'));
+      await postFormDataRequest({ url: POST_API_ROUTE_PATH.sections, data: fd });
+      setSectionFormData({ name: "", coordinator_id: "", program_id: "" });
+      fetchAllSections();
+      // Refresh coordinator list to show updated sections
+      setTimeout(() => {
+        window.location.reload();
+      }, 300);
+    } catch (error) {
+      console.log(error);
+      alert('Failed to create section. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle edit section click
+  const handleEditSection = (section) => {
+    setEditingSection(section);
+    setEditSectionFormData({
+      name: section.name || "",
+      coordinator_id: String(section.coordinator_id || ""),
+      program_id: String(section.program_id || ""),
+    });
+  };
+
+  // Update section
+  const updateSection = async () => {
+    if (!editingSection || !editSectionFormData.name || !editSectionFormData.coordinator_id || !editSectionFormData.program_id) {
+      alert('Please fill in all required fields.');
+      return;
+    }
+    try {
+      setLoading(true);
+      
+      // Send as JSON instead of FormData for PUT requests - Laravel parses JSON better
+      const payload = {
+        name: String(editSectionFormData.name || '').trim(),
+        coordinator_id: String(editSectionFormData.coordinator_id),
+        program_id: String(editSectionFormData.program_id),
+        requestedBy: String(authorizeRole || 'chairperson')
+      };
+      
+      // Log for debugging
+      console.log('Updating section:', {
+        id: editingSection.id,
+        payload: payload,
+        url: `${PUT_API_ROUTE_PATH.sections}/${editingSection.id}`
+      });
+      
+      const response = await putRequest({ 
+        url: `${PUT_API_ROUTE_PATH.sections}/${editingSection.id}`, 
+        data: payload
+      });
+      
+      setEditingSection(null);
+      setEditSectionFormData({ name: "", coordinator_id: "", program_id: "" });
+      fetchAllSections();
+      // Refresh coordinator list to show updated sections
+      setTimeout(() => {
+        window.location.reload();
+      }, 300);
+    } catch (error) {
+      console.error('Update section error:', error);
+      console.error('Full error response:', error?.response);
+      console.error('Error response data:', error?.response?.data);
+      console.error('Error response status:', error?.response?.status);
+      
+      // Handle validation errors
+      let errorMessage = 'Failed to update section. Please try again.';
+      if (error?.response?.data) {
+        const errorData = error.response.data;
+        console.error('Parsed error data:', errorData);
+        
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (errorData.errors) {
+          // Laravel validation errors format - flatten all errors
+          const errorMessages = Object.entries(errorData.errors)
+            .map(([field, messages]) => {
+              const msgArray = Array.isArray(messages) ? messages : [messages];
+              return `${field}: ${msgArray.join(', ')}`;
+            })
+            .join('\n');
+          errorMessage = `Validation errors:\n${errorMessages}`;
+        } else if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        }
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      console.error('Final error message to display:', errorMessage);
+      alert(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle delete section click
+  const handleDeleteSectionClick = (section) => {
+    setSectionToDelete(section);
+    setIsDeleteSectionOpen(true);
+  };
+
+  // Delete section
+  const deleteSection = async () => {
+    if (!sectionToDelete) return;
+    try {
+      setLoading(true);
+      await deleteRequest({
+        url: `${DELETE_API_ROUTE_PATH.sections}/${sectionToDelete.id}`,
+      });
+      setIsDeleteSectionOpen(false);
+      setSectionToDelete(null);
+      fetchAllSections();
+      // Refresh coordinator list to show updated sections
+      setTimeout(() => {
+        window.location.reload();
+      }, 300);
+    } catch (error) {
+      console.log(error);
+      alert('Failed to delete section. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Bulk assign selected coordinators to sections (create a section for each)
+  const handleBulkAssignSection = async () => {
+    if (selectedCoordinatorIds.length === 0) {
+      alert('Please select at least one coordinator.');
+      return;
+    }
+    
+    // Determine the section name pattern
+    let namePattern = '';
+    let programIdForSections = '';
+    
+    if (bulkAssignSectionId) {
+      // Use template section
+      const templateSection = allSections.find(s => String(s.id) === String(bulkAssignSectionId));
+      if (templateSection) {
+        namePattern = templateSection.name;
+        programIdForSections = templateSection.program_id;
+      } else {
+        alert('Selected section template not found.');
+        return;
+      }
+    } else if (bulkAssignSectionName) {
+      // Use custom name pattern
+      namePattern = bulkAssignSectionName;
+    } else {
+      alert('Please select a section template or enter a section name pattern.');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      
+      // For each selected coordinator, create a new section with just the name pattern (no coordinator name appended)
+      for (const coordId of selectedCoordinatorIds) {
+        const coordinator = rows.find(r => String(r.id) === String(coordId));
+        if (coordinator) {
+          const fd = new FormData();
+          // Use only the name pattern, do not append coordinator name
+          fd.append('name', namePattern);
+          fd.append('coordinator_id', String(coordId));
+          fd.append('program_id', String(coordinator.program_id || programIdForSections || selectedProgramId || ''));
+          fd.append('requestedBy', String(authorizeRole || 'chairperson'));
+          await postFormDataRequest({ url: POST_API_ROUTE_PATH.sections, data: fd });
+        }
+      }
+      setSelectedCoordinatorIds([]);
+      setBulkAssignSectionId("");
+      setBulkAssignSectionName("");
+      setIsBulkAssignSectionOpen(false);
+      fetchAllSections();
+      // Refresh coordinator list to show updated sections
+      setTimeout(() => {
+        window.location.reload();
+      }, 300);
+    } catch (error) {
+      console.log(error);
+      alert('Failed to assign sections. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle row selection change from grid
+  const handleRowSelectionChange = (selectionModel) => {
+    // selectionModel is an array of row IDs
+    setSelectedCoordinatorIds(selectionModel || []);
+  };
+
   // Load analytics for coordinators displayed in the grid
   const loadAnalytics = async () => {
     try {
@@ -546,20 +829,36 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
         <Loader loading={loading} />
 
         <div className="mt-3">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-3">
             <StatusDropdown
               selectedStatus={selectedStatus}
               setSelectedStatus={setSelectedStatus}
             />
-            <ManageHeader
-              isOpen={isOpen}
-              setIsOpen={setIsOpen}
-              addPlaceholder="Add New Coordinator"
-              showExportButton={false}
-              showImportButton={true}
-              isImportOpen={isOpenImport}
-              setIsImportOpen={setIsOpenImport}
-            />
+            <div className="flex items-center gap-2">
+              <ManageHeader
+                isOpen={isOpen}
+                setIsOpen={setIsOpen}
+                addPlaceholder="Add New Coordinator"
+                showExportButton={false}
+                showImportButton={true}
+                isImportOpen={isOpenImport}
+                setIsImportOpen={setIsOpenImport}
+              />
+              {selectedCoordinatorIds.length > 0 && (
+                <Button
+                  onClick={() => setIsBulkAssignSectionOpen(true)}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-semibold"
+                >
+                  Assign Section ({selectedCoordinatorIds.length} selected)
+                </Button>
+              )}
+              <Button
+                onClick={() => setIsCreateSectionOpen(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-semibold"
+              >
+                + Create Section
+              </Button>
+            </div>
           </div>
 
           <DynamicDataGrid
@@ -569,6 +868,8 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
             columns={columns}
             url={dataGridUrl}
             requestedBy={authorizeRole}
+            onSelectionModelChange={handleRowSelectionChange}
+            checkboxSelection={true}
           />
 
           {/* Modals */}
@@ -631,6 +932,272 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
               withSelection={true}
             />
           </FormModal>
+
+          {/* Create Section Modal */}
+          <FormModal
+            isOpen={isCreateSectionOpen}
+            setIsOpen={setIsCreateSectionOpen}
+            modalTitle="Manage Sections"
+            onSubmit={(e) => { e.preventDefault(); createSection(); }}
+          >
+            <div className="space-y-6">
+              {/* Create New Section Form */}
+              <div className="border-b pb-4">
+                <Heading level={5} text="Create New Section" className="mb-3 text-lg font-semibold" />
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Section Name <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full border rounded px-3 py-2"
+                      value={sectionFormData.name}
+                      onChange={(e) => setSectionFormData({...sectionFormData, name: e.target.value})}
+                      placeholder="e.g., BSIT 4A"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Coordinator <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      className="w-full border rounded px-3 py-2"
+                      value={sectionFormData.coordinator_id}
+                      onChange={(e) => setSectionFormData({...sectionFormData, coordinator_id: e.target.value})}
+                      required
+                    >
+                      <option value="">- Select Coordinator -</option>
+                      {(allCoordinators.length > 0 ? allCoordinators : rows).map((coord) => {
+                        // Use name if available, otherwise construct from first_name/last_name, fallback to ID
+                        const displayName = coord.name 
+                          || (coord.first_name || coord.last_name 
+                            ? `${coord.first_name || ''} ${coord.middle_name || ''} ${coord.last_name || ''}`.trim()
+                            : `Coordinator ${coord.id}`);
+                        return (
+                          <option key={String(coord.id)} value={String(coord.id)}>
+                            {displayName} ({coord.id})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Program <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      className="w-full border rounded px-3 py-2"
+                      value={sectionFormData.program_id}
+                      onChange={(e) => setSectionFormData({...sectionFormData, program_id: e.target.value})}
+                      required
+                    >
+                      <option value="">- Select Program -</option>
+                      {listOfPrograms.map((prog) => (
+                        <option key={String(prog.id)} value={String(prog.id)}>
+                          {prog.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* All Available Sections List */}
+              <div>
+                <Heading level={5} text="All Available Sections" className="mb-3 text-lg font-semibold" />
+                {allSections.length > 0 ? (
+                  <div className="max-h-96 overflow-y-auto border rounded">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-semibold">Section Name</th>
+                          <th className="text-left px-3 py-2 font-semibold">Coordinator</th>
+                          <th className="text-left px-3 py-2 font-semibold">Program</th>
+                          <th className="text-center px-3 py-2 font-semibold">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allSections.map((section) => (
+                          <tr key={String(section.id)} className="border-t hover:bg-gray-50">
+                            <td className="px-3 py-2">
+                              {editingSection?.id === section.id ? (
+                                <input
+                                  type="text"
+                                  className="w-full border rounded px-2 py-1 text-sm"
+                                  value={editSectionFormData.name}
+                                  onChange={(e) => setEditSectionFormData({...editSectionFormData, name: e.target.value})}
+                                />
+                              ) : (
+                                <span>{section.name}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {editingSection?.id === section.id ? (
+                                <select
+                                  className="w-full border rounded px-2 py-1 text-sm"
+                                  value={editSectionFormData.coordinator_id}
+                                  onChange={(e) => setEditSectionFormData({...editSectionFormData, coordinator_id: e.target.value})}
+                                >
+                                  <option value="">- Select -</option>
+                                  {(allCoordinators.length > 0 ? allCoordinators : rows).map((coord) => {
+                                    // Use name if available, otherwise construct from first_name/last_name, fallback to ID
+                                    const displayName = coord.name 
+                                      || (coord.first_name || coord.last_name 
+                                        ? `${coord.first_name || ''} ${coord.middle_name || ''} ${coord.last_name || ''}`.trim()
+                                        : `Coordinator ${coord.id}`);
+                                    return (
+                                      <option key={String(coord.id)} value={String(coord.id)}>
+                                        {displayName}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              ) : (
+                                <span>
+                                  {(() => {
+                                    // Use coordinator_name from API if available (preferred)
+                                    if (section.coordinator_name) {
+                                      return section.coordinator_name;
+                                    }
+                                    // Fallback: Try to find coordinator from allCoordinators first (has all coordinators), fallback to rows (current page)
+                                    const coord = allCoordinators.find(c => String(c.id) === String(section.coordinator_id)) 
+                                      || rows.find(c => String(c.id) === String(section.coordinator_id));
+                                    return coord ? `${coord.first_name} ${coord.last_name}` : (section.coordinator_id || 'No Coordinator');
+                                  })()}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {editingSection?.id === section.id ? (
+                                <select
+                                  className="w-full border rounded px-2 py-1 text-sm"
+                                  value={editSectionFormData.program_id}
+                                  onChange={(e) => setEditSectionFormData({...editSectionFormData, program_id: e.target.value})}
+                                >
+                                  <option value="">- Select -</option>
+                                  {listOfPrograms.map((prog) => (
+                                    <option key={String(prog.id)} value={String(prog.id)}>
+                                      {prog.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span>
+                                  {listOfPrograms.find(p => String(p.id) === String(section.program_id))?.name || section.program_id}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center justify-center gap-2">
+                                {editingSection?.id === section.id ? (
+                                  <>
+                                    <Button
+                                      onClick={() => updateSection()}
+                                      className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs"
+                                    >
+                                      Save
+                                    </Button>
+                                    <Button
+                                      onClick={() => {
+                                        setEditingSection(null);
+                                        setEditSectionFormData({ name: "", coordinator_id: "", program_id: "" });
+                                      }}
+                                      className="px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded text-xs"
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Button
+                                      onClick={() => handleEditSection(section)}
+                                      className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs"
+                                    >
+                                      Edit
+                                    </Button>
+                                    <Button
+                                      onClick={() => handleDeleteSectionClick(section)}
+                                      className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs"
+                                    >
+                                      Delete
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <Text className="text-sm text-gray-500">No sections available. Create your first section above.</Text>
+                )}
+              </div>
+            </div>
+          </FormModal>
+
+          {/* Delete Section Confirm Modal */}
+          <DeleteConfirmModal
+            open={isDeleteSectionOpen}
+            setOpen={setIsDeleteSectionOpen}
+            title="Delete Section"
+            message={`Are you sure you want to delete section "${sectionToDelete?.name}"?`}
+            handleDelete={deleteSection}
+          />
+
+          {/* Bulk Assign Section Modal */}
+          <FormModal
+            isOpen={isBulkAssignSectionOpen}
+            setIsOpen={setIsBulkAssignSectionOpen}
+            modalTitle={`Assign Section to ${selectedCoordinatorIds.length} Coordinator(s)`}
+            onSubmit={(e) => { e.preventDefault(); handleBulkAssignSection(); }}
+          >
+            <div className="space-y-4">
+              <div>
+                <Text className="text-sm text-gray-600 mb-3">
+                  Selected coordinators: {selectedCoordinatorIds.map(id => {
+                    const coord = rows.find(r => String(r.id) === String(id));
+                    return coord ? `${coord.first_name} ${coord.last_name}` : id;
+                  }).join(', ')}
+                </Text>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Select Section Template (or enter custom name)
+                </label>
+                <select
+                  className="w-full border rounded px-3 py-2 mb-2"
+                  value={bulkAssignSectionId}
+                  onChange={(e) => setBulkAssignSectionId(e.target.value)}
+                >
+                  <option value="">- Select Section Template -</option>
+                  {allSections.map((sec) => (
+                    <option key={String(sec.id)} value={String(sec.id)}>
+                      {sec.name} (Coordinator: {sec.coordinator_id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Or Enter Custom Section Name Pattern
+                </label>
+                <input
+                  type="text"
+                  className="w-full border rounded px-3 py-2"
+                  value={bulkAssignSectionName}
+                  onChange={(e) => setBulkAssignSectionName(e.target.value)}
+                  placeholder="e.g., BSIT 4A"
+                />
+                <Text className="text-xs text-gray-500 mt-1">
+                  A section with this exact name will be created for each selected coordinator.
+                </Text>
+              </div>
+            </div>
+          </FormModal>
         </div>
       </>
     );
@@ -651,15 +1218,33 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
         </Section>
 
         <div className="mt-3">
-          <ManageHeader
-            isOpen={isOpen}
-            setIsOpen={setIsOpen}
-            addPlaceholder="Add New Coordinator"
-            showExportButton={false}
-            showImportButton={true}
-            isImportOpen={isOpenImport}
-            setIsImportOpen={setIsOpenImport}
-          />
+          <div className="flex items-center justify-between mb-3">
+            <ManageHeader
+              isOpen={isOpen}
+              setIsOpen={setIsOpen}
+              addPlaceholder="Add New Coordinator"
+              showExportButton={false}
+              showImportButton={true}
+              isImportOpen={isOpenImport}
+              setIsImportOpen={setIsOpenImport}
+            />
+            <div className="flex gap-2">
+              {selectedCoordinatorIds.length > 0 && (
+                <Button
+                  onClick={() => setIsBulkAssignSectionOpen(true)}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-semibold"
+                >
+                  Assign Section ({selectedCoordinatorIds.length} selected)
+                </Button>
+              )}
+              <Button
+                onClick={() => setIsCreateSectionOpen(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-semibold"
+              >
+                + Create Section
+              </Button>
+            </div>
+          </div>
 
           <DynamicDataGrid
             searchPlaceholder={"Search Coordinator"}
@@ -668,6 +1253,10 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
             columns={columns}
             url={GET_API_ROUTE_PATH.coordinators}
             requestedBy={authorizeRole}
+            onSelectionModelChange={handleRowSelectionChange}
+            checkboxSelection={true}
+            scrollable={true}
+            scrollableHeight={600}
           />
 
           {/* Analytics below grid */}
@@ -778,6 +1367,272 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
               // Display Selection if role is dean
               withSelection={authorizeRole === "dean"}
             />
+          </FormModal>
+
+          {/* Create Section Modal */}
+          <FormModal
+            isOpen={isCreateSectionOpen}
+            setIsOpen={setIsCreateSectionOpen}
+            modalTitle="Manage Sections"
+            onSubmit={(e) => { e.preventDefault(); createSection(); }}
+          >
+            <div className="space-y-6">
+              {/* Create New Section Form */}
+              <div className="border-b pb-4">
+                <Heading level={5} text="Create New Section" className="mb-3 text-lg font-semibold" />
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Section Name <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="w-full border rounded px-3 py-2"
+                      value={sectionFormData.name}
+                      onChange={(e) => setSectionFormData({...sectionFormData, name: e.target.value})}
+                      placeholder="e.g., BSIT 4A"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Coordinator <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      className="w-full border rounded px-3 py-2"
+                      value={sectionFormData.coordinator_id}
+                      onChange={(e) => setSectionFormData({...sectionFormData, coordinator_id: e.target.value})}
+                      required
+                    >
+                      <option value="">- Select Coordinator -</option>
+                      {(allCoordinators.length > 0 ? allCoordinators : rows).map((coord) => {
+                        // Use name if available, otherwise construct from first_name/last_name, fallback to ID
+                        const displayName = coord.name 
+                          || (coord.first_name || coord.last_name 
+                            ? `${coord.first_name || ''} ${coord.middle_name || ''} ${coord.last_name || ''}`.trim()
+                            : `Coordinator ${coord.id}`);
+                        return (
+                          <option key={String(coord.id)} value={String(coord.id)}>
+                            {displayName} ({coord.id})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-1">
+                      Program <span className="text-red-600">*</span>
+                    </label>
+                    <select
+                      className="w-full border rounded px-3 py-2"
+                      value={sectionFormData.program_id}
+                      onChange={(e) => setSectionFormData({...sectionFormData, program_id: e.target.value})}
+                      required
+                    >
+                      <option value="">- Select Program -</option>
+                      {listOfPrograms.map((prog) => (
+                        <option key={String(prog.id)} value={String(prog.id)}>
+                          {prog.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* All Available Sections List */}
+              <div>
+                <Heading level={5} text="All Available Sections" className="mb-3 text-lg font-semibold" />
+                {allSections.length > 0 ? (
+                  <div className="max-h-96 overflow-y-auto border rounded">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50 sticky top-0">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-semibold">Section Name</th>
+                          <th className="text-left px-3 py-2 font-semibold">Coordinator</th>
+                          <th className="text-left px-3 py-2 font-semibold">Program</th>
+                          <th className="text-center px-3 py-2 font-semibold">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allSections.map((section) => (
+                          <tr key={String(section.id)} className="border-t hover:bg-gray-50">
+                            <td className="px-3 py-2">
+                              {editingSection?.id === section.id ? (
+                                <input
+                                  type="text"
+                                  className="w-full border rounded px-2 py-1 text-sm"
+                                  value={editSectionFormData.name}
+                                  onChange={(e) => setEditSectionFormData({...editSectionFormData, name: e.target.value})}
+                                />
+                              ) : (
+                                <span>{section.name}</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {editingSection?.id === section.id ? (
+                                <select
+                                  className="w-full border rounded px-2 py-1 text-sm"
+                                  value={editSectionFormData.coordinator_id}
+                                  onChange={(e) => setEditSectionFormData({...editSectionFormData, coordinator_id: e.target.value})}
+                                >
+                                  <option value="">- Select -</option>
+                                  {(allCoordinators.length > 0 ? allCoordinators : rows).map((coord) => {
+                                    // Use name if available, otherwise construct from first_name/last_name, fallback to ID
+                                    const displayName = coord.name 
+                                      || (coord.first_name || coord.last_name 
+                                        ? `${coord.first_name || ''} ${coord.middle_name || ''} ${coord.last_name || ''}`.trim()
+                                        : `Coordinator ${coord.id}`);
+                                    return (
+                                      <option key={String(coord.id)} value={String(coord.id)}>
+                                        {displayName}
+                                      </option>
+                                    );
+                                  })}
+                                </select>
+                              ) : (
+                                <span>
+                                  {(() => {
+                                    // Use coordinator_name from API if available (preferred)
+                                    if (section.coordinator_name) {
+                                      return section.coordinator_name;
+                                    }
+                                    // Fallback: Try to find coordinator from allCoordinators first (has all coordinators), fallback to rows (current page)
+                                    const coord = allCoordinators.find(c => String(c.id) === String(section.coordinator_id)) 
+                                      || rows.find(c => String(c.id) === String(section.coordinator_id));
+                                    return coord ? `${coord.first_name} ${coord.last_name}` : (section.coordinator_id || 'No Coordinator');
+                                  })()}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              {editingSection?.id === section.id ? (
+                                <select
+                                  className="w-full border rounded px-2 py-1 text-sm"
+                                  value={editSectionFormData.program_id}
+                                  onChange={(e) => setEditSectionFormData({...editSectionFormData, program_id: e.target.value})}
+                                >
+                                  <option value="">- Select -</option>
+                                  {listOfPrograms.map((prog) => (
+                                    <option key={String(prog.id)} value={String(prog.id)}>
+                                      {prog.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span>
+                                  {listOfPrograms.find(p => String(p.id) === String(section.program_id))?.name || section.program_id}
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center justify-center gap-2">
+                                {editingSection?.id === section.id ? (
+                                  <>
+                                    <Button
+                                      onClick={() => updateSection()}
+                                      className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-xs"
+                                    >
+                                      Save
+                                    </Button>
+                                    <Button
+                                      onClick={() => {
+                                        setEditingSection(null);
+                                        setEditSectionFormData({ name: "", coordinator_id: "", program_id: "" });
+                                      }}
+                                      className="px-2 py-1 bg-gray-500 hover:bg-gray-600 text-white rounded text-xs"
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Button
+                                      onClick={() => handleEditSection(section)}
+                                      className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-xs"
+                                    >
+                                      Edit
+                                    </Button>
+                                    <Button
+                                      onClick={() => handleDeleteSectionClick(section)}
+                                      className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-xs"
+                                    >
+                                      Delete
+                                    </Button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <Text className="text-sm text-gray-500">No sections available. Create your first section above.</Text>
+                )}
+              </div>
+            </div>
+          </FormModal>
+
+          {/* Delete Section Confirm Modal */}
+          <DeleteConfirmModal
+            open={isDeleteSectionOpen}
+            setOpen={setIsDeleteSectionOpen}
+            title="Delete Section"
+            message={`Are you sure you want to delete section "${sectionToDelete?.name}"?`}
+            handleDelete={deleteSection}
+          />
+
+          {/* Bulk Assign Section Modal */}
+          <FormModal
+            isOpen={isBulkAssignSectionOpen}
+            setIsOpen={setIsBulkAssignSectionOpen}
+            modalTitle={`Assign Section to ${selectedCoordinatorIds.length} Coordinator(s)`}
+            onSubmit={(e) => { e.preventDefault(); handleBulkAssignSection(); }}
+          >
+            <div className="space-y-4">
+              <div>
+                <Text className="text-sm text-gray-600 mb-3">
+                  Selected coordinators: {selectedCoordinatorIds.map(id => {
+                    const coord = rows.find(r => String(r.id) === String(id));
+                    return coord ? `${coord.first_name} ${coord.last_name}` : id;
+                  }).join(', ')}
+                </Text>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Select Section Template (or enter custom name)
+                </label>
+                <select
+                  className="w-full border rounded px-3 py-2 mb-2"
+                  value={bulkAssignSectionId}
+                  onChange={(e) => setBulkAssignSectionId(e.target.value)}
+                >
+                  <option value="">- Select Section Template -</option>
+                  {allSections.map((sec) => (
+                    <option key={String(sec.id)} value={String(sec.id)}>
+                      {sec.name} (Coordinator: {sec.coordinator_id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">
+                  Or Enter Custom Section Name Pattern
+                </label>
+                <input
+                  type="text"
+                  className="w-full border rounded px-3 py-2"
+                  value={bulkAssignSectionName}
+                  onChange={(e) => setBulkAssignSectionName(e.target.value)}
+                  placeholder="e.g., BSIT 4A"
+                />
+                <Text className="text-xs text-gray-500 mt-1">
+                  A section with this exact name will be created for each selected coordinator.
+                </Text>
+              </div>
+            </div>
           </FormModal>
         </div>
       </Page>

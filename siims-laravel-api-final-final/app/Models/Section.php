@@ -42,4 +42,20 @@ class Section extends BaseModel
         return $this->hasMany(Student::class, 'section_id');
     }
 
+    /**
+     * Summary of coordinator: This section belongs to a coordinator
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Coordinator, Section>
+     */
+    public function coordinator() {
+        return $this->belongsTo(Coordinator::class, 'coordinator_id');
+    }
+
+    /**
+     * Summary of program: This section belongs to a program
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo<Program, Section>
+     */
+    public function program() {
+        return $this->belongsTo(Program::class, 'program_id');
+    }
+
 }
