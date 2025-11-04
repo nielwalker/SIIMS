@@ -12,21 +12,21 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
   const [noSectionStudents, setNoSectionStudents] = useState(false);
 
   const PO_DESCRIPTIONS = useMemo(() => ([
-    "Apply knowledge of computing, science, and mathematics.",
-    "Use current best practices and standards.",
-    "Analyze complex computing/IT-related problems.",
-    "Identify and analyze user needs.",
-    "Design, implement, and evaluate systems.",
-    "Integrate solutions considering public health/safety, etc.",
-    "Apply appropriate techniques and tools.",
-    "Work effectively in teams and lead when needed.",
-    "Assist in creation of effective project plans.",
-    "Communicate effectively.",
-    "Assess local/global impact of IT.",
-    "Act ethically and responsibly.",
-    "Pursue independent learning.",
-    "Participate in research and development.",
-    "Preserve Filipino historical and cultural heritage.",
+    "Apply knowledge of computing, science, and mathematics in solving computing/IT-related problems through critical and creative thinking.",
+    "Use current best practices and standards in solving complex computing/IT-related problems and requirements.",
+    "Analyze complex computing/IT-related problems by applying analytical and quantitative reasoning, and define the computing requirements appropriate to its solution.",
+    "Identify and analyze user needs and take them into account in the selection, creation, evaluation, and administration of computer-based systems.",
+    "Design creatively, implement, and evaluate different computer-based systems, processes, components, or programs to meet desired needs and requirements under various constraints.",
+    "Integrate effectively the IT-based solutions into the user environment with appropriate consideration for public health and safety, cultural, societal, and environmental concerns.",
+    "Select, adapt, and apply appropriate techniques, resources, skills, and modern computing tools to complex computing activities, with an understanding of the limitations.",
+    "Function effectively as an individual, or work collaboratively and respectfully as a member or leader in diverse development teams and in multidisciplinary and/or multicultural settings.",
+    "Assist in the creation of an effective IT project plan.",
+    "Communicate effectively in both oral and written form by being able to deliver and comprehend instructions clearly; and present persuasively to diverse audiences the complex computing/IT-related ideas and perspectives.",
+    "Assess local and global impact of computing and information technology on individuals, organizations, and society.",
+    "Act in recognition of professional, ethical, legal, security, and social responsibilities in the utilization of information technology.",
+    "Recognize the need to engage in independent learning and stay updated with the latest developments in specialized IT fields such as Database Management and Information Systems, Network Design and Administration, and Computer Vision and Image Processing for continual professional development.",
+    "Participate in the generation of new knowledge or in research and development projects aligned with local and national development agendas or goals, contributing to the local and national economy.",
+    "Preserve and promote Filipino historical and cultural heritage.",
   ]), []);
 
   async function loadSummary() {
@@ -162,22 +162,38 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           console.log('Sample entry:', weekEntries[0]);
         }
         
+        // Reference Keywords/Verbs for PO Matching (Guidance Only)
         const keywordSets = [
-          ["math", "mathematics", "science", "algorithm", "compute", "analysis"],
-          ["best practice", "standard", "policy", "method", "procedure", "protocol"],
-          ["analyze", "analysis", "problem", "root cause", "diagnose", "troubleshoot"],
-          ["user need", "requirement", "stakeholder", "ux", "usability"],
-          ["design", "implement", "evaluate", "build", "develop", "test", "setup", "configure", "configuration", "install"],
-          ["safety", "health", "environment", "security", "ethical"],
-          ["tool", "framework", "library", "technology", "platform"],
-          ["team", "collaborat", "leader", "group"],
-          ["plan", "schedule", "timeline", "project plan"],
-          ["communicat", "present", "documentation", "write", "report"],
-          ["impact", "society", "organization", "community"],
-          ["ethical", "privacy", "legal", "compliance"],
-          ["learn", "self-study", "latest", "new skill"],
-          ["research", "experiment", "study", "investigation"],
-          ["filipino", "heritage", "culture", "tradition"],
+          // PO1: Apply knowledge of computing, science, and mathematics
+          ["apply", "compute", "calculate", "solve", "use knowledge", "mathematics", "math", "science", "algorithm", "critical thinking", "creative thinking"],
+          // PO2: Use current best practices and standards
+          ["standard", "best practice", "quality", "performance", "requirement", "best practices", "standards", "policy", "method", "procedure"],
+          // PO3: Analyze complex computing problems
+          ["analyze", "troubleshoot", "test", "debug", "identify", "evaluate", "analysis", "problem", "root cause", "diagnose", "quantitative reasoning"],
+          // PO4: Identify and analyze user needs
+          ["user need", "requirement analysis", "evaluation", "feedback", "user needs", "stakeholder", "ux", "usability", "user feedback"],
+          // PO5: Design, implement, and evaluate systems
+          ["design", "develop", "implement", "create", "build", "deploy", "evaluate", "system", "component", "program", "constraints"],
+          // PO6: Integrate IT solutions
+          ["integrate", "adapt", "maintain", "environment", "safety", "sustainability", "cultural", "societal", "public health", "environmental"],
+          // PO7: Select and apply appropriate techniques and tools
+          ["tool", "modern technology", "programming", "configure", "software", "technique", "resource", "skill", "computing tool", "technology", "framework", "library", "platform"],
+          // PO8: Function effectively in teams
+          ["team", "collaborate", "assist", "coordinate", "leader", "individual", "member", "diverse", "multidisciplinary", "multicultural", "group"],
+          // PO9: Assist in creation of effective IT project plan
+          ["plan", "project plan", "timeline", "documentation", "scheduling", "project", "schedule", "it project"],
+          // PO10: Communicate effectively
+          ["communicate", "present", "report", "explain", "document", "oral", "written", "deliver", "comprehend", "instructions", "persuasive", "audience"],
+          // PO11: Assess local and global impact
+          ["impact", "society", "organization", "community", "global", "local", "individual", "assess"],
+          // PO12: Act with professional, ethical responsibilities
+          ["ethics", "privacy", "law", "responsibility", "security", "professionalism", "ethical", "legal", "compliance", "professional", "social responsibility"],
+          // PO13: Engage in independent learning
+          ["learn independently", "explore", "research", "self-study", "improve skills", "learn", "independent learning", "latest", "new skill", "continual professional development", "stay updated"],
+          // PO14: Participate in research and development
+          ["research", "innovation", "development", "contribution", "national goal", "experiment", "study", "investigation", "new knowledge", "local", "national", "economy"],
+          // PO15: Preserve Filipino historical and cultural heritage
+          ["filipino", "culture", "heritage", "values", "historical", "cultural heritage", "tradition", "filipino culture"],
         ];
         const lower = String(text || "").toLowerCase();
         console.log('Text to analyze:', lower);
@@ -832,22 +848,38 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
 
         // 4) Local keyword scoring similar to Coordinator logic
         try {
+          // Reference Keywords/Verbs for PO Matching (Guidance Only)
           const keywordSets = [
-            ["math", "mathematics", "science", "algorithm", "compute", "analysis"],
-            ["best practice", "standard", "policy", "method", "procedure", "protocol"],
-            ["analyze", "analysis", "problem", "root cause", "diagnose", "troubleshoot"],
-            ["user need", "requirement", "stakeholder", "ux", "usability"],
-            ["design", "implement", "evaluate", "build", "develop", "test", "setup", "configure", "configuration", "install"],
-            ["safety", "health", "environment", "security", "ethical"],
-            ["tool", "framework", "library", "technology", "platform"],
-            ["team", "collaborat", "leader", "group"],
-            ["plan", "schedule", "timeline", "project plan"],
-            ["communicat", "present", "documentation", "write", "report"],
-            ["impact", "society", "organization", "community"],
-            ["ethical", "privacy", "legal", "compliance"],
-            ["learn", "self-study", "latest", "new skill"],
-            ["research", "experiment", "study", "investigation"],
-            ["filipino", "heritage", "culture", "tradition"],
+            // PO1: Apply knowledge of computing, science, and mathematics
+            ["apply", "compute", "calculate", "solve", "use knowledge", "mathematics", "math", "science", "algorithm", "critical thinking", "creative thinking"],
+            // PO2: Use current best practices and standards
+            ["standard", "best practice", "quality", "performance", "requirement", "best practices", "standards", "policy", "method", "procedure"],
+            // PO3: Analyze complex computing problems
+            ["analyze", "troubleshoot", "test", "debug", "identify", "evaluate", "analysis", "problem", "root cause", "diagnose", "quantitative reasoning"],
+            // PO4: Identify and analyze user needs
+            ["user need", "requirement analysis", "evaluation", "feedback", "user needs", "stakeholder", "ux", "usability", "user feedback"],
+            // PO5: Design, implement, and evaluate systems
+            ["design", "develop", "implement", "create", "build", "deploy", "evaluate", "system", "component", "program", "constraints"],
+            // PO6: Integrate IT solutions
+            ["integrate", "adapt", "maintain", "environment", "safety", "sustainability", "cultural", "societal", "public health", "environmental"],
+            // PO7: Select and apply appropriate techniques and tools
+            ["tool", "modern technology", "programming", "configure", "software", "technique", "resource", "skill", "computing tool", "technology", "framework", "library", "platform"],
+            // PO8: Function effectively in teams
+            ["team", "collaborate", "assist", "coordinate", "leader", "individual", "member", "diverse", "multidisciplinary", "multicultural", "group"],
+            // PO9: Assist in creation of effective IT project plan
+            ["plan", "project plan", "timeline", "documentation", "scheduling", "project", "schedule", "it project"],
+            // PO10: Communicate effectively
+            ["communicate", "present", "report", "explain", "document", "oral", "written", "deliver", "comprehend", "instructions", "persuasive", "audience"],
+            // PO11: Assess local and global impact
+            ["impact", "society", "organization", "community", "global", "local", "individual", "assess"],
+            // PO12: Act with professional, ethical responsibilities
+            ["ethics", "privacy", "law", "responsibility", "security", "professionalism", "ethical", "legal", "compliance", "professional", "social responsibility"],
+            // PO13: Engage in independent learning
+            ["learn independently", "explore", "research", "self-study", "improve skills", "learn", "independent learning", "latest", "new skill", "continual professional development", "stay updated"],
+            // PO14: Participate in research and development
+            ["research", "innovation", "development", "contribution", "national goal", "experiment", "study", "investigation", "new knowledge", "local", "national", "economy"],
+            // PO15: Preserve Filipino historical and cultural heritage
+            ["filipino", "culture", "heritage", "values", "historical", "cultural heritage", "tradition", "filipino culture"],
           ];
           const lower = String(text || "").toLowerCase();
           const counts = keywordSets.map((set) => {

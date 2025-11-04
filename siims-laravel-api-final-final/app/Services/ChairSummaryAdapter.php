@@ -231,81 +231,82 @@ class ChairSummaryAdapter
                 $weekLabel = $week ? (string)$week : 'the selected week';
                 
                 // Comprehensive PO descriptions with detailed explanations and practical examples
+                // Based on official Program Outcomes for BSIT
                 $poDetailed = [
                     'PO1' => [
-                        'description' => 'Apply knowledge of computing, science, and mathematics appropriate to the discipline.',
-                        'examples' => 'Using formulas, calculations, algorithms, data structures, programming logic, solving technical problems, applying theoretical concepts, working with databases, processing data, using mathematical operations.',
-                        'context_indicators' => 'Any activity involving problem-solving, coding, data manipulation, calculations, logical reasoning, applying programming concepts, working with software, handling technical challenges.'
+                        'description' => 'Apply knowledge of computing, science, and mathematics in solving computing/IT-related problems through critical and creative thinking.',
+                        'examples' => 'Using formulas, calculations, algorithms, data structures, programming logic, solving technical problems, applying theoretical concepts, working with databases, processing data, using mathematical operations, critical thinking, creative problem-solving.',
+                        'context_indicators' => 'Keywords: apply, compute, calculate, solve, use knowledge. Any activity involving problem-solving, coding, data manipulation, calculations, logical reasoning, applying programming concepts, working with software, handling technical challenges, critical thinking, creative solutions.'
                     ],
                     'PO2' => [
-                        'description' => 'Analyze a complex computing problem and apply principles of computing and other relevant disciplines to identify solutions.',
-                        'examples' => 'Troubleshooting, debugging, analyzing errors, identifying root causes, evaluating alternatives, making decisions, reviewing code, testing solutions, investigating issues, problem diagnosis.',
-                        'context_indicators' => 'Any mention of fixing bugs, solving problems, investigating issues, analyzing situations, making decisions, evaluating options, reviewing work, testing approaches.'
+                        'description' => 'Use current best practices and standards in solving complex computing/IT-related problems and requirements.',
+                        'examples' => 'Following industry standards, best practices, quality guidelines, performance optimization, meeting requirements, using established methods, adhering to protocols, following procedures, implementing quality standards.',
+                        'context_indicators' => 'Keywords: standard, best practice, quality, performance, requirement. Any mention of following standards, best practices, quality guidelines, performance optimization, meeting requirements, using established methods, protocols, procedures.'
                     ],
                     'PO3' => [
-                        'description' => 'Design, implement, and evaluate a computing-based solution to meet a given set of computing requirements in the context of the program\'s discipline.',
-                        'examples' => 'Planning features, creating systems, building applications, developing modules, setting up configurations, implementing solutions, creating designs, building components.',
-                        'context_indicators' => 'Any activity involving creating, building, developing, implementing, designing, setting up, configuring, constructing systems or software components.'
+                        'description' => 'Analyze complex computing/IT-related problems by applying analytical and quantitative reasoning, and define the computing requirements appropriate to its solution.',
+                        'examples' => 'Troubleshooting, debugging, analyzing errors, identifying root causes, evaluating alternatives, making decisions, reviewing code, testing solutions, investigating issues, problem diagnosis, quantitative analysis, requirement definition.',
+                        'context_indicators' => 'Keywords: analyze, troubleshoot, test, debug, identify, evaluate. Any mention of fixing bugs, solving problems, investigating issues, analyzing situations, making decisions, evaluating options, reviewing work, testing approaches, quantitative reasoning.'
                     ],
                     'PO4' => [
-                        'description' => 'Use current techniques, skills, and tools necessary for computing practice.',
-                        'examples' => 'Using programming languages, frameworks, libraries, APIs, development tools, software platforms, technology stacks, modern methodologies, industry tools.',
-                        'context_indicators' => 'Using any programming language, framework, tool, software, platform, library, API, or technology. Learning new tools, working with modern technologies, using development environments.'
+                        'description' => 'Identify and analyze user needs and take them into account in the selection, creation, evaluation, and administration of computer-based systems.',
+                        'examples' => 'Understanding requirements, gathering needs, considering user feedback, analyzing requirements, meeting user expectations, addressing client needs, user-focused work, requirement analysis, user evaluation, stakeholder consultation.',
+                        'context_indicators' => 'Keywords: user need, requirement analysis, evaluation, feedback. Any mention of understanding requirements, user needs, client requirements, stakeholder needs, user feedback, addressing needs, requirement gathering, meeting expectations, user evaluation.'
                     ],
                     'PO5' => [
-                        'description' => 'Function effectively as a member or leader of a team engaged in activities appropriate to the program\'s discipline.',
-                        'examples' => 'Working with others, collaborating, team meetings, group projects, coordinating tasks, leading discussions, assisting colleagues, working together, sharing responsibilities.',
-                        'context_indicators' => 'Any mention of working with team members, colleagues, supervisors, meetings, collaboration, group work, coordinating, helping others, being part of a team.'
+                        'description' => 'Design creatively, implement, and evaluate different computer-based systems, processes, components, or programs to meet desired needs and requirements under various constraints.',
+                        'examples' => 'Planning features, creating systems, building applications, developing modules, setting up configurations, implementing solutions, creating designs, building components, designing solutions, evaluating systems, working within constraints.',
+                        'context_indicators' => 'Keywords: design, develop, implement, create, build, deploy. Any activity involving creating, building, developing, implementing, designing, setting up, configuring, constructing systems or software components, creative design, evaluation.'
                     ],
                     'PO6' => [
-                        'description' => 'Communicate effectively with a range of audiences.',
-                        'examples' => 'Presentations, reports, emails, meetings, discussions, documentation, explaining concepts, writing documentation, verbal communication, written reports, presenting work.',
-                        'context_indicators' => 'Any form of communication: writing reports, emails, documentation, giving presentations, attending meetings, explaining work, discussing with others, verbal or written communication.'
+                        'description' => 'Integrate effectively the IT-based solutions into the user environment with appropriate consideration for public health and safety, cultural, societal, and environmental concerns.',
+                        'examples' => 'Integrating systems, adapting solutions, maintaining environments, considering safety, sustainability, cultural aspects, societal impact, environmental concerns, public health considerations, system integration.',
+                        'context_indicators' => 'Keywords: integrate, adapt, maintain, environment, safety, sustainability. Any mention of integrating systems, adapting solutions, maintaining environments, considering safety, sustainability, cultural, societal, environmental, or public health concerns.'
                     ],
                     'PO7' => [
-                        'description' => 'Analyze the local and global impact of computing on individuals, organizations, and society.',
-                        'examples' => 'Understanding user impact, considering business effects, thinking about organizational benefits, recognizing social implications, understanding market needs, considering client impact.',
-                        'context_indicators' => 'Any mention of how work affects users, clients, organization, business, customers, stakeholders, or any consideration of broader impact or benefits.'
+                        'description' => 'Select, adapt, and apply appropriate techniques, resources, skills, and modern computing tools to complex computing activities, with an understanding of the limitations.',
+                        'examples' => 'Using programming languages, frameworks, libraries, APIs, development tools, software platforms, technology stacks, modern methodologies, industry tools, selecting tools, adapting techniques, understanding limitations.',
+                        'context_indicators' => 'Keywords: tool, modern technology, programming, configure, software. Using any programming language, framework, tool, software, platform, library, API, or technology. Learning new tools, working with modern technologies, selecting appropriate tools, adapting techniques.'
                     ],
                     'PO8' => [
-                        'description' => 'Recognize professional responsibilities and make informed judgments in computing practice based on legal and ethical principles.',
-                        'examples' => 'Following company policies, respecting confidentiality, handling data properly, ethical considerations, professional behavior, following procedures, adhering to standards, responsible practices.',
-                        'context_indicators' => 'Following policies, procedures, standards, ethical practices, professional conduct, handling sensitive information, respecting privacy, responsible behavior.'
+                        'description' => 'Function effectively as an individual, or work collaboratively and respectfully as a member or leader in diverse development teams and in multidisciplinary and/or multicultural settings.',
+                        'examples' => 'Working with others, collaborating, team meetings, group projects, coordinating tasks, leading discussions, assisting colleagues, working together, sharing responsibilities, diverse teams, multidisciplinary work, multicultural settings.',
+                        'context_indicators' => 'Keywords: team, collaborate, assist, coordinate, leader. Any mention of working with team members, colleagues, supervisors, meetings, collaboration, group work, coordinating, helping others, being part of a team, leading, diverse teams, multidisciplinary, multicultural.'
                     ],
                     'PO9' => [
-                        'description' => 'Function effectively on teams to accomplish a common goal.',
-                        'examples' => 'Participating in team tasks, contributing to group objectives, working toward shared goals, team collaboration, group coordination, shared projects.',
-                        'context_indicators' => 'Working in teams, contributing to group efforts, participating in collaborative activities, working toward common objectives, team-based work.'
+                        'description' => 'Assist in the creation of an effective IT project plan.',
+                        'examples' => 'Creating project plans, planning timelines, scheduling tasks, documenting plans, project documentation, planning activities, creating schedules, project management, timeline creation.',
+                        'context_indicators' => 'Keywords: plan, project plan, timeline, documentation, scheduling. Any mention of creating plans, project planning, timelines, scheduling, documentation, project management, planning activities, creating schedules.'
                     ],
                     'PO10' => [
-                        'description' => 'Identify and analyze user needs and take them into account in the selection, creation, evaluation, and administration of computer-based systems.',
-                        'examples' => 'Understanding requirements, gathering needs, considering user feedback, analyzing requirements, meeting user expectations, addressing client needs, user-focused work.',
-                        'context_indicators' => 'Any mention of understanding requirements, user needs, client requirements, stakeholder needs, user feedback, addressing needs, requirement gathering, meeting expectations.'
+                        'description' => 'Communicate effectively in both oral and written form by being able to deliver and comprehend instructions clearly; and present persuasively to diverse audiences the complex computing/IT-related ideas and perspectives.',
+                        'examples' => 'Presentations, reports, emails, meetings, discussions, documentation, explaining concepts, writing documentation, verbal communication, written reports, presenting work, delivering instructions, comprehending requirements, persuasive presentations.',
+                        'context_indicators' => 'Keywords: communicate, present, report, explain, document. Any form of communication: writing reports, emails, documentation, giving presentations, attending meetings, explaining work, discussing with others, verbal or written communication, delivering instructions, presenting to audiences.'
                     ],
                     'PO11' => [
-                        'description' => 'Design and develop computing solutions that integrate computing and non-computing requirements.',
-                        'examples' => 'Integrating systems, connecting components, working with business logic, integrating requirements, combining systems, system integration, connecting modules.',
-                        'context_indicators' => 'Integrating systems, connecting components, working with business processes, system integration, combining different elements, integration work.'
+                        'description' => 'Assess local and global impact of computing and information technology on individuals, organizations, and society.',
+                        'examples' => 'Understanding user impact, considering business effects, thinking about organizational benefits, recognizing social implications, understanding market needs, considering client impact, assessing effects, global perspectives, local impact, societal impact.',
+                        'context_indicators' => 'Keywords: impact, society, organization, community, global. Any mention of how work affects users, clients, organization, business, customers, stakeholders, local or global impact, societal effects, or any consideration of broader impact or benefits.'
                     ],
                     'PO12' => [
-                        'description' => 'Apply appropriate techniques and tools for the specification, design, implementation, and testing of computer systems.',
-                        'examples' => 'Testing, quality assurance, debugging, verification, validation, checking functionality, ensuring quality, applying testing methods, using testing tools.',
-                        'context_indicators' => 'Testing work, quality assurance, debugging, verification, validation, checking systems, ensuring functionality, testing approaches, quality checks.'
+                        'description' => 'Act in recognition of professional, ethical, legal, security, and social responsibilities in the utilization of information technology.',
+                        'examples' => 'Following company policies, respecting confidentiality, handling data properly, ethical considerations, professional behavior, following procedures, adhering to standards, responsible practices, legal compliance, security practices, privacy protection.',
+                        'context_indicators' => 'Keywords: ethics, privacy, law, responsibility, security, professionalism. Following policies, procedures, standards, ethical practices, professional conduct, handling sensitive information, respecting privacy, responsible behavior, legal compliance, security awareness.'
                     ],
                     'PO13' => [
-                        'description' => 'Recognize the need for and engage in continuing professional development.',
-                        'examples' => 'Learning new things, self-study, researching, exploring new technologies, improving skills, seeking knowledge, studying resources, gaining expertise, professional growth.',
-                        'context_indicators' => 'Learning, studying, researching, exploring, improving skills, seeking knowledge, gaining experience, professional development, acquiring new knowledge.'
+                        'description' => 'Recognize the need to engage in independent learning and stay updated with the latest developments in specialized IT fields such as Database Management and Information Systems, Network Design and Administration, and Computer Vision and Image Processing for continual professional development.',
+                        'examples' => 'Learning new things, self-study, researching, exploring new technologies, improving skills, seeking knowledge, studying resources, gaining expertise, professional growth, independent learning, staying updated, specialized fields, continual development.',
+                        'context_indicators' => 'Keywords: learn independently, explore, research, self-study, improve skills. Learning, studying, researching, exploring, improving skills, seeking knowledge, gaining experience, professional development, acquiring new knowledge, independent learning, staying updated with latest developments.'
                     ],
                     'PO14' => [
-                        'description' => 'Contribute effectively to the development of computing solutions in a team environment.',
-                        'examples' => 'Contributing to projects, adding features, improving systems, enhancing solutions, providing input, making contributions, developing solutions together.',
-                        'context_indicators' => 'Contributing to development work, adding to projects, improving systems, enhancing solutions, making contributions, developing features, building solutions.'
+                        'description' => 'Participate in the generation of new knowledge or in research and development projects aligned with local and national development agendas or goals, contributing to the local and national economy.',
+                        'examples' => 'Research activities, innovation work, development projects, contributing to projects, experimentation, investigation, generating new knowledge, research participation, local development, national goals, economic contribution.',
+                        'context_indicators' => 'Keywords: research, innovation, development, contribution, national goal. Contributing to development work, research activities, innovation, experimentation, investigation, generating knowledge, participating in R&D, local and national development, economic contribution.'
                     ],
                     'PO15' => [
-                        'description' => 'Demonstrate understanding of Filipino culture, values, and heritage in the context of computing solutions.',
-                        'examples' => 'Using Filipino language, understanding local context, considering cultural aspects, working with local clients, understanding Filipino market, cultural awareness, local context.',
-                        'context_indicators' => 'Working with Filipino clients, understanding local context, using Filipino language, considering cultural aspects, local market understanding, cultural awareness.'
+                        'description' => 'Preserve and promote Filipino historical and cultural heritage.',
+                        'examples' => 'Using Filipino language, understanding local context, considering cultural aspects, working with local clients, understanding Filipino market, cultural awareness, local context, preserving heritage, promoting culture, Filipino values, historical awareness.',
+                        'context_indicators' => 'Keywords: Filipino, culture, heritage, values. Working with Filipino clients, understanding local context, using Filipino language, considering cultural aspects, local market understanding, cultural awareness, preserving heritage, promoting Filipino culture and values, historical awareness.'
                     ]
                 ];
                 
@@ -333,15 +334,17 @@ Step 8: Ensure pos_hit contains ALL POs from both po_context_hit AND po_word_hit
 Step 9: DO NOT limit the number of POs - if 10 or 15 POs are achieved, include ALL of them in pos_hit
 
 PO RECOGNITION RULES (APPLY THESE):
-- \"Orientation\" or \"attended\" = PO5 (team), PO6 (communication), PO8 (professional), PO13 (learning)
-- \"Discussed\" or \"talked\" = PO6 (communication), PO5/PO9 (teamwork)
-- \"Learned about\" or \"understood\" = PO10 (requirements), PO13 (learning)
-- \"Used\" or \"worked with\" any tool/system = PO4 (tools/techniques)
-- \"Fixed\" or \"solved\" = PO1 (knowledge), PO2 (analysis)
-- \"Created\" or \"built\" = PO3 (design/implement), PO11 (integrate), PO14 (contribute)
-- \"Tested\" or \"checked\" = PO12 (testing)
-- \"Followed\" or \"adhered to\" = PO8 (professional/ethical)
-- ANY work done = Multiple POs achieved
+- \"Orientation\" or \"attended\" = PO8 (team/collaboration), PO10 (communication), PO12 (professional/ethical), PO13 (learning)
+- \"Discussed\" or \"talked\" = PO10 (communication), PO8/PO9 (teamwork/project planning)
+- \"Learned about\" or \"understood\" = PO4 (user needs), PO13 (independent learning)
+- \"Used\" or \"worked with\" any tool/system = PO7 (tools/techniques)
+- \"Fixed\" or \"solved\" = PO1 (knowledge), PO3 (analysis)
+- \"Created\" or \"built\" = PO5 (design/implement), PO6 (integrate), PO14 (research/contribution)
+- \"Tested\" or \"checked\" = PO3 (analysis/evaluation), PO12 (testing/quality)
+- \"Followed\" or \"adhered to\" = PO2 (standards), PO12 (professional/ethical)
+- \"Planned\" or \"scheduled\" = PO9 (project planning)
+- \"Researched\" or \"studied\" = PO13 (learning), PO14 (research/development)
+- ANY work done = Multiple POs achieved (typically 3-8+ POs)
 
 YOUR TASKS (IN ORDER):
 1. Read RAW WEEKLY REPORT DATA (Activities/Tasks and Learnings) - THIS IS YOUR SOURCE
@@ -513,14 +516,16 @@ ENFORCED PROCESS:
 8. Generate HUMANIZED, SPECIFIC recommendations with concrete actions - write like a real educator, not a robot
 
 COMMON ACTIVITY TO PO MAPPINGS:
-- Any meeting/orientation maps to PO5, PO6, PO8, PO13
-- Any discussion/talk maps to PO5, PO6
-- Any learning/understanding maps to PO10, PO13
-- Any tool/software use maps to PO4
-- Any problem solved maps to PO1, PO2
-- Any creation/development maps to PO3, PO11, PO14
-- Any testing maps to PO12
-- Any following rules maps to PO8
+- Any meeting/orientation maps to PO8 (team), PO10 (communication), PO12 (professional), PO13 (learning)
+- Any discussion/talk maps to PO8 (team), PO10 (communication)
+- Any learning/understanding maps to PO4 (user needs), PO13 (learning)
+- Any tool/software use maps to PO7 (tools/techniques)
+- Any problem solved maps to PO1 (knowledge), PO3 (analysis)
+- Any creation/development maps to PO5 (design/implement), PO6 (integrate), PO14 (research)
+- Any testing maps to PO3 (analysis), PO12 (testing/quality)
+- Any following rules/standards maps to PO2 (standards), PO12 (professional/ethical)
+- Any planning/scheduling maps to PO9 (project planning)
+- Any research/study maps to PO13 (learning), PO14 (research/development)
 
 CONTEXTUAL INTERPRETATION METHODOLOGY:',
                     $sys
