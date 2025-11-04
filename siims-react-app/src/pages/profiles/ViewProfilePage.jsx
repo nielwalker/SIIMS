@@ -80,17 +80,17 @@ const ViewProfilePage = ({ authorizeRole, viewingUser }) => {
     switch (viewingUser) {
       case "company":
         return (
-          <h1 className="text-xl font-semibold max-w-2xl">{profile.name}</h1>
+          <h1 className="text-xl font-semibold max-w-2xl">{profile?.name || ""}</h1>
         );
       case "dean":
         return (
           <>
             <h1 className="text-3xl font-semibold">
-              {profile.first_name &&
+              {profile?.first_name && profile?.last_name &&
                 `${profile.first_name} ${profile.last_name}`}
             </h1>
             <Text className="text-sm text-gray-600 font-bold">
-              Dean of the {profile.college_name || "College of Science"}
+              Dean of the {profile?.college_name || "College of Science"}
             </Text>
           </>
         );
@@ -98,13 +98,13 @@ const ViewProfilePage = ({ authorizeRole, viewingUser }) => {
         return (
           <>
             <h1 className="text-3xl font-semibold">
-              {profile.first_name &&
+              {profile?.first_name && profile?.last_name &&
                 `${profile.first_name} ${profile.last_name}`}
             </h1>
             <div className="flex flex-col">
               {/* Program */}
               <Text className="text-sm text-gray-600 font-bold">
-                {profile.program || "No Program"}
+                {profile?.program || "No Program"}
               </Text>
             </div>
           </>
@@ -113,17 +113,17 @@ const ViewProfilePage = ({ authorizeRole, viewingUser }) => {
         return (
           <>
             <h1 className="text-3xl font-semibold">
-              {profile.first_name &&
+              {profile?.first_name && profile?.last_name &&
                 `${profile.first_name} ${profile.last_name}`}
             </h1>
             <div className="flex flex-col">
               {/* College */}
               <Text className="text-sm text-gray-600 font-bold">
-                {profile.college || "College of Science"}
+                {profile?.college || profile?.college_name || "College of Science"}
               </Text>
               {/* Program */}
               <Text className="text-sm text-gray-600 font-bold">
-                {profile.program || "No Program"}
+                {profile?.program || "No Program"}
               </Text>
             </div>
           </>
@@ -132,8 +132,13 @@ const ViewProfilePage = ({ authorizeRole, viewingUser }) => {
         return (
           <>
             <h1 className="text-3xl font-semibold">
-              {`${profile.first_name} ${profile.middle_name} ${profile.last_name}`}
+              {`${profile?.first_name || ""} ${profile?.middle_name || ""} ${profile?.last_name || ""}`.trim() || "Student Name"}
             </h1>
+            {profile?.section_name && (
+              <Text className="text-sm text-gray-600 font-bold">
+                Section: {profile.section_name}
+              </Text>
+            )}
           </>
         );
       default:
@@ -161,16 +166,16 @@ const ViewProfilePage = ({ authorizeRole, viewingUser }) => {
                 <Mail size={20} className="text-blue-600" />
                 <Text>
                   <a
-                    href={`mailto:${profile.email || "dean.email@example.com"}`}
+                    href={`mailto:${profile?.email || "dean.email@example.com"}`}
                     className="text-blue-600 hover:underline"
                   >
-                    {profile.email || "dean.email@example.com"}
+                    {profile?.email || "dean.email@example.com"}
                   </a>
                 </Text>
               </div>
               <div className="flex items-center gap-4 text-gray-700">
                 <Phone size={20} className="text-blue-600" />
-                <Text>{profile.phone || "+63 912 345 6789"}</Text>
+                <Text>{profile?.phone_number || profile?.phone || "+63 912 345 6789"}</Text>
               </div>
             </div>
           </div>
@@ -192,9 +197,15 @@ const ViewProfilePage = ({ authorizeRole, viewingUser }) => {
         });
 
         // Check response
-        if (response) {
-          setProfile(response);
-        }
+      if (response) {
+        console.log("ViewProfilePage - Profile response:", {
+          section: response?.section,
+          section_name: response?.section_name,
+          student_section: response?.student?.section,
+          response_keys: Object.keys(response || {}),
+        });
+        setProfile(response);
+      }
       } catch (error) {
         console.error(error);
         // Return back to the last page
@@ -215,8 +226,8 @@ const ViewProfilePage = ({ authorizeRole, viewingUser }) => {
       {/* Header Section */}
       <div className="relative w-full h-72 bg-gray-200">
         <img
-          src={getCoverImage(profile.cover_image_url)} // Use external default cover image URL
-          alt="Dean Cover"
+          src={getCoverImage(profile?.cover_image_url)} // Use external default cover image URL
+          alt="Cover"
           className="w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-black bg-opacity-30"></div>
@@ -227,8 +238,8 @@ const ViewProfilePage = ({ authorizeRole, viewingUser }) => {
         <div className="flex items-center justify-between w-full bg-white shadow-lg">
           <div className="flex items-center gap-6 bg-opacity-80 px-6 py-4 rounded-lg  w-full">
             <img
-              src={getProfileImage(profile.profile_image_url)} // Use external default profile image URL
-              alt="Dean Profile"
+              src={getProfileImage(profile?.profile_image_url)} // Use external default profile image URL
+              alt="Profile"
               className="w-32 h-32 object-cover rounded-full border-4 border-white shadow-md"
             />
             <div className="text-gray-900">{renderProfileHeader()}</div>

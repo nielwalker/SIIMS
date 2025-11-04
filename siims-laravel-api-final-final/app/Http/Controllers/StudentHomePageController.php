@@ -32,7 +32,7 @@ class StudentHomePageController extends Controller
         $authUser = Auth::user()->student;
 
         // Find student profile by ID
-        $profileData = Student::with(['workExperiences', 'educations', 'user', 'program.college', 'coordinator.user', 'latestApplication'])->find($authUser->id);
+        $profileData = Student::with(['workExperiences', 'educations', 'user', 'program.college', 'coordinator.user', 'section', 'latestApplication'])->find($authUser->id);
        
         /**
          * Declare the variables necessary

@@ -161,11 +161,25 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
 
   const fetchAllSections = async () => {
     try {
-      const resp = await getRequest({ url: `/api/v1/sections?requestedBy=${authorizeRole || 'chairperson'}` });
+      // Use getAll=true to fetch ALL sections without limit
+      const resp = await getRequest({ 
+        url: `/api/v1/sections`, 
+        params: { 
+          requestedBy: authorizeRole || 'chairperson',
+          getAll: 'true' // Fetch all sections, not just 10
+        } 
+      });
       const payload = resp;
-      const list = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload) ? payload : []);
+      // Handle different response formats
+      const list = Array.isArray(payload?.data) 
+        ? payload.data 
+        : (Array.isArray(payload) 
+          ? payload 
+          : []);
+      console.log("Fetched all sections for Manage Sections modal:", list.length, "sections");
       setAllSections(list);
-    } catch (_) {
+    } catch (error) {
+      console.error("Error fetching all sections:", error);
       setAllSections([]);
     }
   };

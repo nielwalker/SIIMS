@@ -31,8 +31,8 @@ class StudentProfileResource extends BaseResource
             'certificates' => $this->certificates,
             'about_me' => $this->about_me,
             'date_of_birth' => $this->date_of_birth,
-            'college' => $this->program->college->name,
-            'program' => $this->program->name,
+            'college' => $this->program && $this->program->college ? $this->program->college->name : null,
+            'program' => $this->program ? $this->program->name : null,
             'age' => $this->age,
             'coordinator_name' => $this->coordinator ? $this->getFullName(
                 $this->coordinator->user->first_name ?? "",
@@ -40,7 +40,12 @@ class StudentProfileResource extends BaseResource
                 $this->coordinator->user->last_name ?? "",
             ) : null,
             'coordinator_email' => $this->coordinator ? $this->coordinator->user->email : null,
-            'coordinator_phone_number' => $this->coordinator ? $this->coordinator->user->phone_number : null
+            'coordinator_phone_number' => $this->coordinator ? $this->coordinator->user->phone_number : null,
+            'section' => $this->section ? [
+                'id' => $this->section->id,
+                'name' => $this->section->name,
+            ] : null,
+            'section_name' => $this->section ? $this->section->name : null,
         ]);
     }
 }

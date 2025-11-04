@@ -37,6 +37,13 @@ class StudentHomeResource extends BaseResource
             'coordinator_email' => $this->coordinator ? $this->coordinator->user->email : null,
             'coordinator_phone_number' => $this->coordinator ? $this->coordinator->user->phone_number : null,
             'latest_application' => $this->latestApplication,
+            'college' => $this->program && $this->program->college ? $this->program->college->name : null,
+            'program' => $this->program ? $this->program->name : null,
+            'section' => $this->section ? [
+                'id' => $this->section->id,
+                'name' => $this->section->name,
+            ] : null,
+            'section_name' => $this->section ? $this->section->name : null,
         ]);
     }
 }

@@ -56,6 +56,19 @@ const ProfileSidebar = ({ profile }) => {
             </ul>
           </div>
 
+          {/* Section Information */}
+          {profile.section_name && (
+            <div className="mt-8">
+              <h4 className="text-lg font-semibold text-gray-800">Section</h4>
+              <ul className="mt-4 text-sm text-gray-600 space-y-3">
+                <li className="flex items-center space-x-2">
+                  <span className="text-indigo-600">📚</span>
+                  <span>{profile.section_name}</span>
+                </li>
+              </ul>
+            </div>
+          )}
+
           {/* Coordinator Contact Information */}
           <div className="mt-8">
             <h4 className="text-lg font-semibold text-gray-800">

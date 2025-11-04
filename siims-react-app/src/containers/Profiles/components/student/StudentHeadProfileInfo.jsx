@@ -35,6 +35,14 @@ const StudentHeadProfileInfo = ({ profile = {} }) => {
 
                 <Text className="text-sm">{program.name || "No Program"}</Text>
               </div>
+
+              {/* Section */}
+              <div className="flex flex-col">
+                <Text className="text-sm font-bold">Section</Text>
+                <Text className="text-sm">
+                  {safe(student.section?.name, safe(profile.section_name, "No Section"))}
+                </Text>
+              </div>
             </div>
           </div>
 

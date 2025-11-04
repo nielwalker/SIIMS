@@ -208,7 +208,8 @@ class ChairpersonStudentController extends Controller
         // $students = $program->students; // Assuming there's a `students` relationship in the Program model
 
         // Get all students with their latest application and company info
-        $students = Student::with(['user', 'coordinator.user', 'company', 'section', 'latestApplication.workPost.office.company', 'workExperiences'])->where('program_id', $program->id)->get();
+        // Eager load section with coordinator to allow fallback to section's coordinator
+        $students = Student::with(['user', 'coordinator.user', 'company', 'section.coordinator.user', 'latestApplication.workPost.office.company', 'workExperiences'])->where('program_id', $program->id)->get();
 
         $transformedStudents = $students->map(function ($student) {
             return $this->transform($student);
@@ -242,19 +243,35 @@ class ChairpersonStudentController extends Controller
             }
         }
 
+        // Determine coordinator - fallback to section's coordinator if student coordinator is not set
+        $coordinator = $student->coordinator;
+        $coordinatorId = $student->coordinator_id;
+        
+        // If student has no coordinator but has a section with a coordinator, use section's coordinator
+        if (!$coordinator && $student->section && $student->section->coordinator) {
+            $coordinator = $student->section->coordinator;
+            $coordinatorId = $coordinator->id;
+            
+            // Optionally sync the coordinator_id to the student record for consistency
+            if (!$student->coordinator_id && $coordinatorId) {
+                $student->coordinator_id = $coordinatorId;
+                $student->save();
+            }
+        }
+
         return [
             "id" => $student->id,
             // expose coordinator_id so frontend can filter by selected coordinator
-            "coordinator_id" => $student->coordinator_id,
+            "coordinator_id" => $coordinatorId,
             "first_name" => $student->user->first_name,
             "middle_name" => $student->user->middle_name,
             "last_name" => $student->user->last_name,
             "email" => $student->user->email,
-            "coordinator" => $student->coordinator
+            "coordinator" => $coordinator
                 ? trim(
-                    $student->coordinator->user->first_name . ' ' .
-                        $student->coordinator->user->middle_name . ' ' .
-                        $student->coordinator->user->last_name
+                    $coordinator->user->first_name . ' ' .
+                        ($coordinator->user->middle_name ?? '') . ' ' .
+                        $coordinator->user->last_name
                 )
                 : "No coordinator",
             "company" => $companyName,

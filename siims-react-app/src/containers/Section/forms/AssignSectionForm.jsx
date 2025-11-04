@@ -29,16 +29,17 @@ const AssignSectionForm = ({
           labelClassName="text-sm text-black font-semibold"
           required={true}
         >
-          <Select
+            <Select
             name="program_id"
             className="border data-[hover]:shadow data-[focus]:bg-blue-100 h-full outline-none p-2"
-            aria-label="Select program"
+            aria-label="Select section"
             value={selectedSectionID}
             onChange={(e) => setSelectedSectionID(e.target.value)}
           >
+            <option value="">-- Select Section --</option>
             {sections.map((section, index) => (
-              <option key={index} value={section.id}>
-                {section.name}
+              <option key={section.id || index} value={section.id}>
+                {section.name} {section.coordinator_name ? `(Coordinator: ${section.coordinator_name})` : ''}
               </option>
             ))}
           </Select>

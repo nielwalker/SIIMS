@@ -16,7 +16,6 @@ const SearchableDropdown = ({
   // Add "All" as the first item with id set to null
   const updatedItems = [
     { id: null, name: "All" },
-    { id: "no-sections", name: "No Sections" },
     ...items,
   ];
 

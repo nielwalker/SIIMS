@@ -100,7 +100,7 @@ class TestProfileController extends Controller
             $profile = new SupervisorProfileResource($profile);
         }
         else if($authUser->hasRole('student') && $requestedBy === 'student') {
-            $profile = Student::with(['user', 'program.college', 'coordinator', 'certificates'])->find($authUser->id);
+            $profile = Student::with(['user', 'program.college', 'coordinator.user', 'section', 'certificates'])->find($authUser->id);
 
             // Transform to resource
             $profile = new StudentProfileResource($profile);
@@ -273,10 +273,23 @@ class TestProfileController extends Controller
      */
     public function getStudentProfile(String $student_id) {
        
-        // Find Student
-        /* $student = $this->studentController->findStudent($student_id)->with(['workExperiences', 'educations', 'user', 'program.college', 'coordinator.user'])->find($student_id); */
+        // Find Student - try by student id first, then by user_id
+        $student = Student::with(['workExperiences', 'educations', 'user', 'program.college', 'coordinator.user', 'section'])->find($student_id);
+        
+        // If not found by student id, try by user_id
+        if (!$student) {
+            $student = Student::with(['workExperiences', 'educations', 'user', 'program.college', 'coordinator.user', 'section'])->where('user_id', $student_id)->first();
+        }
 
-        $student = Student::with(['workExperiences', 'educations', 'user', 'program.college', 'coordinator.user'])->find($student_id);
+        // Log for debugging
+        \Log::info('Student Profile Request', [
+            'student_id_param' => $student_id,
+            'student_found' => $student ? true : false,
+            'student_id' => $student ? $student->id : null,
+            'section_id' => $student ? $student->section_id : null,
+            'section_loaded' => $student && $student->relationLoaded('section'),
+            'section_name' => $student && $student->section ? $student->section->name : null,
+        ]);
 
         // Return resource
         return $this->jsonResponse(new StudentProfileResource($student));

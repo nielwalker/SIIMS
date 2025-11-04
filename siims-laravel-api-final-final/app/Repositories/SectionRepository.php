@@ -102,9 +102,16 @@ class SectionRepository implements SectionRepositoryInterface
         // Start query
         $query = $this->query();
 
-        // Check role
-        if($this->authUser->hasRole('coordinator') && $filters['requestedBy'] === 'coordinator') {
-            // Query Owned by coordinator
+        // Check role - but skip coordinator filter if getAll is true (for assign modal)
+        $getAll = isset($filters['getAll']) && ($filters['getAll'] === true || $filters['getAll'] === 'true' || $filters['getAll'] === 1 || $filters['getAll'] === '1');
+        
+        // When getAll is true, show ALL sections regardless of role (for assign modal)
+        // This allows coordinators to assign students to any section, not just their own
+        if($getAll) {
+            // Don't apply any filters - show all sections for assignment
+            // This is intentional: when assigning students, users need to see all available sections
+        } else if($this->authUser->hasRole('coordinator') && $filters['requestedBy'] === 'coordinator') {
+            // Query Owned by coordinator - only when not getting all sections
             $query->where('coordinator_id', $this->authUser->id);
         }
 

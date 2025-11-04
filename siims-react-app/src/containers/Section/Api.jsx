@@ -36,9 +36,50 @@ export const getSection = async ({
     // console.log(sectionID);
 
     if (response) {
-      // console.log(response);
-      setSelectedSection(response[0] || { id: null, name: "All" });
-      setSections(response);
+      // Handle different response formats
+      let sectionsList = [];
+      
+      // Check if response is directly an array
+      if (Array.isArray(response)) {
+        sectionsList = response;
+      } 
+      // Check if response has a data property with array
+      else if (response && response.data && Array.isArray(response.data)) {
+        sectionsList = response.data;
+      }
+      
+      // Filter out soft-deleted or unavailable sections (sections should already be filtered by backend)
+      // Only show available sections (non-deleted, active sections)
+      const availableSections = sectionsList.filter(section => section && section.id && section.name);
+      
+      // For coordinators: Only add "All Sections" if they have multiple sections (more than 1)
+      // This allows coordinators to see all their students when they have multiple sections
+      let sectionsWithAll = [];
+      if (authorizeRole === 'coordinator' && availableSections.length > 1) {
+        // Add "All Sections" option only if coordinator has multiple sections
+        sectionsWithAll = [{ id: null, name: "All Sections" }, ...availableSections];
+      } else {
+        // For single section or non-coordinator roles, don't add "All Sections"
+        sectionsWithAll = availableSections;
+      }
+      
+      setSections(sectionsWithAll);
+      
+      // Auto-select logic
+      if (setSelectedSection && typeof setSelectedSection === 'function') {
+        // If coordinator has multiple sections, default to "All Sections"
+        if (authorizeRole === 'coordinator' && availableSections.length > 1) {
+          setSelectedSection({ id: null, name: "All Sections" });
+        } 
+        // If coordinator has only one section, auto-select that section
+        else if (authorizeRole === 'coordinator' && availableSections.length === 1) {
+          setSelectedSection({ id: availableSections[0].id, name: availableSections[0].name });
+        }
+        // For other roles, default to "All Sections" if available
+        else if (sectionsWithAll.length > 0 && sectionsWithAll[0].id === null) {
+          setSelectedSection({ id: null, name: "All Sections" });
+        }
+      }
     }
   } catch (error) {
     console.log(error);

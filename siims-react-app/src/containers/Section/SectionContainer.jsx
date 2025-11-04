@@ -7,6 +7,7 @@ import {
   fetchData,
   getSection,
 } from "./Api";
+import { getRequest } from "../../api/apiHelpers";
 import {
   getStudentActionColumns,
   getStudentStaticColumns,
@@ -71,6 +72,7 @@ const SectionContainer = ({ authorizeRole }) => {
   const [selectedRows, setSelectedRows] = useState([]);
   const [selectedSectionID, setSelectedSectionID] = useState("");
   const [selectedStudent, setSelectedStudent] = useState({});
+  const [allSectionsForAssign, setAllSectionsForAssign] = useState([]);
 
   /**
    *
@@ -163,7 +165,69 @@ const SectionContainer = ({ authorizeRole }) => {
    *
    *
    */
-  const openSectionAssignModal = () => {
+  const openSectionAssignModal = async () => {
+    // Fetch all sections for the assign modal (no limit, no search filter, no coordinator filter)
+    try {
+      const response = await getRequest({
+        url: "/api/v1/sections",
+        params: {
+          requestedBy: authorizeRole,
+          getAll: 'true', // Flag to get all sections (pass as string for query param)
+        },
+      });
+      
+      console.log("Fetched sections for assign modal - raw response:", response);
+      
+      // Handle different response formats
+      // Laravel Resource Collection when passed to jsonResponse returns the collection directly
+      // getRequest returns res.data, so response will be the collection array directly
+      let sectionsList = [];
+      
+      // Check if response is directly an array (most likely for Resource Collection)
+      if (Array.isArray(response)) {
+        sectionsList = response;
+      } 
+      // Check if response has a data property with array (if wrapped in another object)
+      else if (response && response.data && Array.isArray(response.data)) {
+        sectionsList = response.data;
+      }
+      // Check nested data.data structure (if double-wrapped)
+      else if (response && response.data && response.data.data && Array.isArray(response.data.data)) {
+        sectionsList = response.data.data;
+      }
+      // Try to find any array in the response object
+      else if (response && typeof response === 'object') {
+        const foundArray = Object.values(response).find(v => Array.isArray(v));
+        if (foundArray) {
+          sectionsList = foundArray;
+        }
+      }
+      
+      console.log("Extracted sections list:", sectionsList, "Count:", sectionsList.length);
+      if (sectionsList.length > 0) {
+        console.log("Sample sections:", sectionsList.slice(0, 3).map(s => ({ id: s.id, name: s.name })));
+        // Check specifically for 4R3
+        const has4R3 = sectionsList.some(s => s.name === '4R3');
+        console.log("Does list include 4R3?", has4R3);
+        if (!has4R3) {
+          console.warn("WARNING: Section 4R3 is missing from the list!");
+          console.log("All section names:", sectionsList.map(s => s.name).sort());
+        }
+      }
+      
+      if (sectionsList.length > 0) {
+        setAllSectionsForAssign(sectionsList);
+      } else {
+        // Fallback to existing sections if API doesn't return data
+        console.warn("No sections returned from API, using existing sections");
+        setAllSectionsForAssign(sections.filter(s => s.id !== null)); // Filter out "All Sections" option
+      }
+    } catch (error) {
+      console.error("Error fetching all sections for assign:", error);
+      // Fallback to existing sections
+      setAllSectionsForAssign(sections.filter(s => s.id !== null));
+    }
+    
     setIsSectionAssignOpen(true);
   };
   const openStudentInfoModal = (data) => {
@@ -349,6 +413,7 @@ const SectionContainer = ({ authorizeRole }) => {
         selectedSectionID={selectedSectionID}
         setSelectedSectionID={setSelectedSectionID}
         assignSection={assignSection}
+        allSectionsForAssign={allSectionsForAssign}
         /** Student Info Modal */
         isStudentModalOpen={isStudentModalOpen}
         setIsStudentModalOpen={setIsStudentModalOpen}

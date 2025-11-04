@@ -4,6 +4,23 @@ import Text from "../common/Text";
 import { getFullAddress } from "../../utils/formatAddress";
 
 const StudentSideProfileInfo = ({ profile }) => {
+  // Debug: Log profile data to check section
+  console.log("StudentSideProfileInfo - Profile data:", {
+    section: profile?.section,
+    section_name: profile?.section_name,
+    profile_keys: Object.keys(profile || {}),
+  });
+
+  // Get section name from various possible locations
+  const getSectionName = () => {
+    if (profile?.section?.name) return profile.section.name;
+    if (profile?.section_name) return profile.section_name;
+    if (typeof profile?.section === 'string') return profile.section;
+    if (profile?.student?.section?.name) return profile.student.section.name;
+    if (profile?.student?.section_name) return profile.student.section_name;
+    return "No Section";
+  };
+
   return (
     <div>
       <div className="grid grid-cols-9 gap-5">
@@ -32,7 +49,7 @@ const StudentSideProfileInfo = ({ profile }) => {
           {/* Section */}
           <div className="flex flex-col">
             <Text className="text-sm font-bold">Section</Text>
-            <Text className="text-sm">{profile.section?.name || profile.section_name || profile.section || "No Section"}</Text>
+            <Text className="text-sm">{getSectionName()}</Text>
           </div>
           </div>
         </div>

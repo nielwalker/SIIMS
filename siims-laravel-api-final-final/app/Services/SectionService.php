@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Http\Requests\SectionRequest;
+use App\Models\Section;
 use App\Models\Student;
 use App\Models\User;
 use App\Repositories\SectionRepositoryInterface;
@@ -39,6 +40,17 @@ class SectionService
      */
     public function assign(array $validated = [], string $section_id)
     {
+        // Fetch the section with its coordinator relationship
+        $section = Section::with('coordinator')->find($section_id);
+        
+        // Check if section exists
+        if (!$section) {
+            abort(404, 'Section not found.');
+        }
+
+        // Get the coordinator_id from the section
+        $coordinator_id = $section->coordinator_id;
+
         // Loop student ids
         foreach ($validated['student_ids'] as $studentData) {
 
@@ -50,8 +62,11 @@ class SectionService
                 continue; // Skip if student not found
             }
 
-            // Update section_id and save
+            // Update section_id and coordinator_id automatically based on section's coordinator
             $student->section_id = $section_id;
+            if ($coordinator_id) {
+                $student->coordinator_id = $coordinator_id;
+            }
             $student->save();
         }
     }
@@ -67,15 +82,47 @@ class SectionService
         $query = $this->sectionRepositoryInterface->queryGet($filters);
 
         // Eager load coordinator and program relationships
-        $query->with(['coordinator.user', 'program']);
+        // Use nested eager loading to ensure sections without coordinators are still included
+        $query->with([
+            'coordinator' => function($q) {
+                $q->with('user');
+            },
+            'program'
+        ]);
 
         // Apply the search filter if a search term is provided
         if (!empty($filters['searchTerm'])) {
             $query->where('name', 'LIKE', '%' . strtolower($filters['searchTerm']) . '%')->orWhere('id', 'LIKE', '%' . strtolower($filters['searchTerm']) . '%');
         }
 
-        // Limit the results to a maximum of 10
-        $sections = $query->take(10)->get();
+        // Check if we need all sections (e.g., for assign modal) or limited results (for dropdown search)
+        $getAll = isset($filters['getAll']) && ($filters['getAll'] === true || $filters['getAll'] === 'true' || $filters['getAll'] === 1);
+        $limit = isset($filters['limit']) ? (int)$filters['limit'] : ($getAll ? null : 10);
+        
+        // Debug logging for getAll requests
+        if ($getAll) {
+            \Log::info('Fetching all sections for assign modal', [
+                'filters' => $filters,
+                'sql' => $query->toSql(),
+                'bindings' => $query->getBindings(),
+            ]);
+        }
+        
+        if ($limit !== null) {
+            $sections = $query->take($limit)->get();
+        } else {
+            $sections = $query->get();
+        }
+        
+        // Debug logging: Check if 4R3 is in results
+        if ($getAll) {
+            $sectionNames = $sections->pluck('name')->toArray();
+            \Log::info('Sections returned from query', [
+                'total' => $sections->count(),
+                'names' => $sectionNames,
+                'has_4R3' => in_array('4R3', $sectionNames),
+            ]);
+        }
 
         // Return
         return $sections;

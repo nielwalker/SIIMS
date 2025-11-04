@@ -102,9 +102,13 @@ class SectionController extends Controller
         $searchTerm = $this->sanitizeAndGet($request);
 
         // Add filters
+        $getAllParam = $request->query('getAll');
+        $getAll = $getAllParam === 'true' || $getAllParam === true || $getAllParam === '1' || $getAllParam === 1;
+        
         $filters = [
             'requestedBy' => $request->query('requestedBy'),
             'searchTerm' => $searchTerm,
+            'getAll' => $getAll, // Get getAll flag from request
         ];
 
         // Get Sections

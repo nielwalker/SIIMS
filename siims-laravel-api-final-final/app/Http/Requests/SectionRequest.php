@@ -49,10 +49,12 @@ class SectionRequest extends FormRequest
         // Determine if this is an update request
         $isUpdate = $this->isMethod('put') || $this->isMethod('patch');
         
-        // Build unique rule for name - ignore current section when updating
-        $nameUniqueRule = 'unique:sections,name';
+        // Build unique rule for name - ignore current section when updating and ignore soft-deleted records
+        // Laravel's unique rule automatically ignores soft-deleted records if the model uses SoftDeletes
+        // But we need to ensure the rule doesn't check deleted_at column
+        $nameUniqueRule = 'unique:sections,name,NULL,id,deleted_at,NULL';
         if ($isUpdate && $sectionId) {
-            $nameUniqueRule = "unique:sections,name,{$sectionId},id";
+            $nameUniqueRule = "unique:sections,name,{$sectionId},id,deleted_at,NULL";
         }
 
         // General rules - different for create vs update

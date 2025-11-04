@@ -34,6 +34,7 @@ class StudentProfileController extends ProfileController
             'student.coordinator', // coordinator may already be a User model
             'student.program.college',
             'student.program.chairperson', // chairperson may already be a User model
+            'student.section', // Load section relationship
             // latest application with office and supervisor for address/name fallbacks
             'student.latestApplication.workPost.office.supervisor.user',
             'student.latestApplication.workPost.office.company',
@@ -43,6 +44,26 @@ class StudentProfileController extends ProfileController
 
         // Build a robust payload that tolerates missing relations
         $payload = [
+            'id' => $authUser->id,
+            'first_name' => $authUser->first_name,
+            'middle_name' => $authUser->middle_name,
+            'last_name' => $authUser->last_name,
+            'email' => $authUser->email,
+            'gender' => $authUser->gender,
+            'phone_number' => $authUser->phone_number,
+            'street' => $authUser->street,
+            'barangay' => $authUser->barangay,
+            'city_municipality' => $authUser->city_municipality,
+            'province' => $authUser->province,
+            'postal_code' => $authUser->postal_code,
+            'profile_image_url' => $authUser->profile_image_url,
+            'college' => $student && $student->program && $student->program->college ? $student->program->college->name : null,
+            'program' => $student && $student->program ? $student->program->name : null,
+            'section' => $student && $student->section ? [
+                'id' => $student->section->id,
+                'name' => $student->section->name,
+            ] : null,
+            'section_name' => $student && $student->section ? $student->section->name : null,
             'user' => [
                 'id' => $authUser->id,
                 'first_name' => $authUser->first_name,
@@ -105,6 +126,11 @@ class StudentProfileController extends ProfileController
                         ];
                     })() : null,
                 ] : null,
+                'section' => $student->section ? [
+                    'id' => $student->section->id,
+                    'name' => $student->section->name,
+                ] : null,
+                'section_name' => $student->section ? $student->section->name : null,
                 // Add latest application details for address/supervisor fallbacks
                 'latest_application' => $student->latestApplication ? (function() use ($student) {
                     $app = $student->latestApplication;

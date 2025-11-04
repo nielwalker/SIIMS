@@ -57,6 +57,7 @@ const SectionPresenter = ({
   selectedSectionID,
   setSelectedSectionID,
   assignSection,
+  allSectionsForAssign = [],
 
   /** Student Info Modal */
   isStudentModalOpen,
@@ -101,7 +102,7 @@ const SectionPresenter = ({
         <AssignSectionForm
           selectedSectionID={selectedSectionID}
           setSelectedSectionID={setSelectedSectionID}
-          sections={sections}
+          sections={allSectionsForAssign.length > 0 ? allSectionsForAssign : sections.filter(s => s.id !== null)}
           assignSection={assignSection}
         />
       </Modal>
@@ -129,20 +130,6 @@ const SectionPresenter = ({
               onSearchSubmit={fetchSections}
             />
 
-            {selectedSection.id === "no-sections" && (
-              <Button
-                onClick={() => openSectionAssignModal()}
-                className={`px-3 py-2 rounded-sm text-sm text-white font-semibold flex items-center gap-2 ${
-                  selectedRows.length > 0
-                    ? "bg-green-500 hover:bg-green-600"
-                    : "bg-gray-500 cursor-not-allowed"
-                }`}
-                disabled={!(selectedRows.length > 0)}
-              >
-                <UserCog size={18} />
-                Assign Student
-              </Button>
-            )}
           </div>
         )}
 
@@ -195,7 +182,7 @@ const SectionPresenter = ({
           handlePaginationModelChange={handlePaginationModelChange}
           rows={rows}
           columns={columns}
-          checkboxSelection={selectedSection.id === "no-sections"}
+          checkboxSelection={true}
           onRowSelectionModelChange={onRowSelectionModelChange}
         />
       </div>

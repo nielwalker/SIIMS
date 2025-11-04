@@ -422,6 +422,9 @@ const StudentProfilePage = () => {
                   </h1>
                   <Text className="text-gray-700">{user.program}</Text>
                   <Text className="text-sm text-gray-500">{user.college}</Text>
+                  {user.section_name && (
+                    <Text className="text-sm text-gray-500">Section: {user.section_name}</Text>
+                  )}
                   <div className="mt-6 flex flex-wrap gap-4 justify-center">
                     <Button
                       onClick={exportToPDF}
