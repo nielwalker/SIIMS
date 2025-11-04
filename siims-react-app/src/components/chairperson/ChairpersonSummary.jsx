@@ -63,7 +63,8 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
             const matchesCoordinator = String(sid ?? '') === String(coordinatorId ?? '');
             // Also filter by section if sectionId is provided
             if (matchesCoordinator && sectionId) {
-              const section_id = s.section_id ?? s.sectionId ?? s.sectionID;
+              // Check multiple possible field names for section ID
+              const section_id = s.section_id ?? s.sectionId ?? s.sectionID ?? s.section?.id ?? (typeof s.section === 'object' && s.section ? s.section.id : null);
               return String(section_id ?? '') === String(sectionId ?? '');
             }
             return matchesCoordinator;
@@ -143,21 +144,9 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
             return !Number.isNaN(wn) ? wn === weekNum : true;
           });
         }
-        if (filteredStudents.length === 0) {
-          // Check if a section is selected and has no students
-          if (sectionId) {
-            setNoSectionStudents(true);
-            setSummary("");
-            setScores(Array.from({ length: 15 }, () => 0));
-            setHitList([]);
-            setNotHitList([]);
-            setRecommendations([]);
-            return;
-          }
-          // No data for this coordinator/week; don't overwrite any existing summary from backend
-          setScores(Array.from({ length: 15 }, () => 0));
-          return;
-        }
+        // Don't check for empty students here - wait for backend API response
+        // The backend will handle filtering and return empty results if no students/entries exist
+        // This prevents false "no students" errors when section filtering is working correctly
         if (weekEntries.length === 0) {
           // No week entries but students exist
           setScores(Array.from({ length: 15 }, () => 0));
@@ -367,6 +356,31 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           const data = await resp.json();
           console.log('Backend response:', data);
           
+          // Check if backend returned empty results (no weekly entries) for a selected section
+          // This indicates the section has no students or no weekly entries
+          const hasWeeklyEntries = data && (
+            (Array.isArray(data.pos_hit) && data.pos_hit.length > 0) ||
+            data.summary ||
+            (data.activities && data.activities.length > 0) ||
+            (data.learnings && data.learnings.length > 0) ||
+            (data['summary for this section on a week'])
+          );
+          
+          if (!hasWeeklyEntries && sectionId) {
+            // Backend confirmed no data for this section
+            setNoSectionStudents(true);
+            setSummary("");
+            setScores(Array.from({ length: 15 }, () => 0));
+            setHitList([]);
+            setNotHitList([]);
+            setRecommendations([]);
+            setLoading(false);
+            return;
+          }
+          
+          // Clear the no students error if we have data
+          setNoSectionStudents(false);
+          
           // Capture ALL OpenAI PO analysis data for hybrid scoring
           // pos_hit: Primary source - complete PO analysis from OpenAI
           if (Array.isArray(data?.pos_hit)) {
@@ -566,9 +580,10 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           
           // Set hitList immediately - this is the source of truth from backend
           // CRITICAL: Set this BEFORE calling computeScores to ensure it's not overwritten
+          // IMPORTANT: Display ALL POs from backend - NO LIMITS
           if (hits.length > 0) {
-            setHitList(hits);
-            console.log('✅ Set hitList from backend data:', hits.length, 'items:', hits);
+            setHitList(hits); // Display ALL hits - no filtering or limiting
+            console.log('✅ Set hitList from backend data (ALL POs):', hits.length, 'items:', hits);
           } else {
             console.log('⚠️ No hits found in backend data - pos_hit, poContextHit, and poWordHit are all empty or missing');
             // Keep existing hitList if we have one, don't overwrite with empty array

@@ -323,13 +323,14 @@ PROGRAM OUTCOMES (PO1-PO15):
 
 MANDATORY PO IDENTIFICATION PROCESS (YOU MUST DO THIS - NO EXCEPTIONS):
 Step 1: Read EVERY SINGLE activity/task and learning from RAW WEEKLY REPORT DATA section below
-Step 2: For EACH activity/learning, identify which POs it demonstrates using the mapping guide
+Step 2: For EACH activity/learning, identify ALL POs it demonstrates using the mapping guide (one activity can show multiple POs)
 Step 3: Go through ALL 15 POs one by one and check if ANY activity/learning shows evidence
-Step 4: If you find ANY evidence, add it to pos_hit array with po and reason - BE LENIENT, not strict
+Step 4: If you find ANY evidence, add it to pos_hit array with po and reason - BE LENIENT and GENEROUS, not strict
 Step 5: Only add to pos_not_hit if you find ABSOLUTELY NO evidence after checking everything
-Step 6: BUILD pos_hit FIRST - it should contain objects like {\"po\": \"PO5\", \"reason\": \"...\"}
+Step 6: BUILD pos_hit FIRST - it should contain objects like {\"po\": \"PO5\", \"reason\": \"...\"} for ALL achieved POs
 Step 7: Then build po_context_hit and po_word_hit arrays from the pos_hit you found
 Step 8: Ensure pos_hit contains ALL POs from both po_context_hit AND po_word_hit combined
+Step 9: DO NOT limit the number of POs - if 10 or 15 POs are achieved, include ALL of them in pos_hit
 
 PO RECOGNITION RULES (APPLY THESE):
 - \"Orientation\" or \"attended\" = PO5 (team), PO6 (communication), PO8 (professional), PO13 (learning)
@@ -369,12 +370,14 @@ YOUR TASKS (IN ORDER):
    - Make recommendations sound like thoughtful, practical suggestions from an experienced educator
 
 CRITICAL ENFORCEMENT:
-- You MUST identify at least SOME POs if activities/learnings exist
+- You MUST identify ALL POs that are demonstrated in the activities/learnings - NO LIMITS
 - Empty pos_hit is ONLY acceptable if activities/learnings section is completely empty
-- Be PROACTIVE in finding POs - if there's ANY connection, mark it
+- Be PROACTIVE and GENEROUS in finding POs - if there's ANY connection, mark it
 - Check activities/learnings multiple times - you might miss POs on first pass
-- Every internship week typically demonstrates 3-8 POs minimum
-- If you see \"orientation\", \"discussed\", \"learned\" - these ALWAYS show PO5, PO6, PO13 at minimum
+- DO NOT limit the number of POs - identify ALL possible POs that are achieved
+- There is NO maximum or minimum number of POs - identify ALL that apply
+- If you see \"orientation\", \"discussed\", \"learned\" - these show PO5, PO6, PO13 (and potentially more)
+- A single activity can demonstrate multiple POs - identify ALL of them
 
 JSON RESPONSE REQUIREMENTS:
 - Return ONLY valid JSON - no explanations, no text before or after
@@ -501,12 +504,13 @@ CRITICAL: Use ONLY "RAW WEEKLY REPORT DATA" for PO analysis. Ignore summary text
 
 ENFORCED PROCESS:
 1. Read EVERY activity/task and learning - do not skip any
-2. For EACH activity/learning, ask: \"Which POs does this demonstrate?\"
+2. For EACH activity/learning, ask: \"Which POs does this demonstrate?\" (can be multiple POs)
 3. For EACH of 15 POs, ask: \"Do ANY activities/learnings show this PO?\"
 4. Be GENEROUS in interpretation - participated = teamwork (PO5/PO9), discussed = communication (PO6)
 5. Mark PO as achieved if there is ANY reasonable connection to activities/learnings
-6. Build pos_hit aggressively - it is better to include a PO than miss it
-7. Generate HUMANIZED, SPECIFIC recommendations with concrete actions - write like a real educator, not a robot
+6. Build pos_hit aggressively - it is better to include a PO than miss it - NO LIMITS on how many POs can be achieved
+7. DO NOT impose any maximum limit - if all 15 POs are achieved, include all 15 in pos_hit
+8. Generate HUMANIZED, SPECIFIC recommendations with concrete actions - write like a real educator, not a robot
 
 COMMON ACTIVITY TO PO MAPPINGS:
 - Any meeting/orientation maps to PO5, PO6, PO8, PO13

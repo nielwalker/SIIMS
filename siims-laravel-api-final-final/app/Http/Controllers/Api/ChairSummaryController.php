@@ -27,13 +27,26 @@ class ChairSummaryController extends Controller
         }
         if ($sectionId) {
             $query->where('s.section_id', $sectionId);
+            \Log::info('ChairSummary: Filtering by section_id: ' . $sectionId);
         }
         if ($week) {
             $query->where('we.week_number', $week);
         }
 
         $rows = $query->get();
-        \Log::info('ChairSummary: Found ' . $rows->count() . ' weekly entries for coordinator ' . $coordinatorId . ', week ' . $week);
+        \Log::info('ChairSummary: Found ' . $rows->count() . ' weekly entries for coordinator ' . $coordinatorId . ', section ' . $sectionId . ', week ' . $week);
+        
+        // Log sample student IDs for debugging
+        if ($rows->count() > 0) {
+            $studentIds = DB::table('students as s')
+                ->select('s.id', 's.section_id', 's.coordinator_id')
+                ->where('s.coordinator_id', $coordinatorId)
+                ->when($sectionId, function($q) use ($sectionId) {
+                    return $q->where('s.section_id', $sectionId);
+                })
+                ->get();
+            \Log::info('ChairSummary: Students matching criteria: ' . json_encode($studentIds));
+        }
         
         // Extract activities/tasks and learnings separately for PO analysis
         $activities = [];
