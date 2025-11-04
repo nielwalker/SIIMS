@@ -13,16 +13,20 @@ class ChairSummaryController extends Controller
     public function generate(Request $request, ChairSummaryAdapter $adapter): JsonResponse
     {
         $coordinatorId = $request->input('coordinatorId');
+        $sectionId = $request->input('sectionId');
         $week = $request->integer('week');
         $useGPT = (bool) $request->input('useGPT');
 
-        // Fetch weekly entries of all students under coordinator
+        // Fetch weekly entries of all students under coordinator (and section if specified)
         $query = DB::table('weekly_entries as we')
             ->select('we.week_number as weekNumber', 'we.tasks', 'we.learnings')
             ->join('students as s', 's.id', '=', 'we.student_id');
 
         if ($coordinatorId) {
             $query->where('s.coordinator_id', $coordinatorId);
+        }
+        if ($sectionId) {
+            $query->where('s.section_id', $sectionId);
         }
         if ($week) {
             $query->where('we.week_number', $week);
@@ -31,6 +35,34 @@ class ChairSummaryController extends Controller
         $rows = $query->get();
         \Log::info('ChairSummary: Found ' . $rows->count() . ' weekly entries for coordinator ' . $coordinatorId . ', week ' . $week);
         
+        // Extract activities/tasks and learnings separately for PO analysis
+        $activities = [];
+        $learnings = [];
+        
+        foreach ($rows as $row) {
+            if (!empty($row->tasks)) {
+                $cleanTasks = strip_tags($row->tasks);
+                $cleanTasks = preg_replace('/\s+/', ' ', $cleanTasks);
+                $cleanTasks = trim($cleanTasks);
+                if (!empty($cleanTasks)) {
+                    $activities[] = $cleanTasks;
+                }
+            }
+            if (!empty($row->learnings)) {
+                $cleanLearnings = strip_tags($row->learnings);
+                $cleanLearnings = preg_replace('/\s+/', ' ', $cleanLearnings);
+                $cleanLearnings = trim($cleanLearnings);
+                if (!empty($cleanLearnings)) {
+                    $learnings[] = $cleanLearnings;
+                }
+            }
+        }
+        
+        // Remove duplicates
+        $activities = array_values(array_unique(array_filter($activities)));
+        $learnings = array_values(array_unique(array_filter($learnings)));
+        
+        // Combined text for summary generation (can vary)
         $combined = $rows->map(function ($r) {
             $t = trim(($r->tasks ?? '') . ' ' . ($r->learnings ?? ''));
             $t = preg_replace('/\s+/', ' ', $t);
@@ -42,10 +74,20 @@ class ChairSummaryController extends Controller
         $combined = $this->convertToThirdPerson($combined);
 
         \Log::info('ChairSummary: Combined text length: ' . strlen($combined));
-        \Log::info('ChairSummary: Combined text preview: ' . substr($combined, 0, 200));
+        \Log::info('ChairSummary: Activities count: ' . count($activities));
+        \Log::info('ChairSummary: Learnings count: ' . count($learnings));
+        
+        // Log sample activities and learnings for debugging
+        if (!empty($activities)) {
+            \Log::info('ChairSummary: Sample activities: ' . json_encode(array_slice($activities, 0, 3)));
+        }
+        if (!empty($learnings)) {
+            \Log::info('ChairSummary: Sample learnings: ' . json_encode(array_slice($learnings, 0, 3)));
+        }
 
-        // Use adapter summarize method (analyze not defined)
-        $result = $adapter->summarize($combined, $week, $useGPT);
+        // Use adapter - pass activities and learnings separately for PO analysis
+        // Summary generation is separate from PO analysis
+        $result = $adapter->summarize($combined, $week, $useGPT, $activities, $learnings);
         // Ensure result summary is also third-person (extra safety for any model variation)
         if (isset($result['summary'])) {
             $result['summary'] = $this->convertToThirdPerson($result['summary']);
@@ -56,47 +98,9 @@ class ChairSummaryController extends Controller
         
         \Log::info('ChairSummary: Result from adapter:', $result);
 
-        // For "overall" week, provide structured data for frontend
+        // Activities and learnings are already extracted and stored in result by adapter
+        // For "overall" week, ensure summary format
         if ($week === null || $week === 0) {
-            // Extract activities and learnings from the raw data
-            $activities = [];
-            $learnings = [];
-            
-            foreach ($rows as $row) {
-                if (!empty($row->tasks)) {
-                    // Clean HTML tags and normalize text
-                    $cleanTasks = strip_tags($row->tasks);
-                    $cleanTasks = preg_replace('/\s+/', ' ', $cleanTasks);
-                    $cleanTasks = trim($cleanTasks);
-                    
-                    // Convert first person to third person
-                    $cleanTasks = $this->convertToThirdPerson($cleanTasks);
-                    
-                    if (!empty($cleanTasks)) {
-                        $activities[] = $cleanTasks;
-                    }
-                }
-                if (!empty($row->learnings)) {
-                    // Clean HTML tags and normalize text
-                    $cleanLearnings = strip_tags($row->learnings);
-                    $cleanLearnings = preg_replace('/\s+/', ' ', $cleanLearnings);
-                    $cleanLearnings = trim($cleanLearnings);
-                    
-                    // Convert first person to third person
-                    $cleanLearnings = $this->convertToThirdPerson($cleanLearnings);
-                    
-                    if (!empty($cleanLearnings)) {
-                        $learnings[] = $cleanLearnings;
-                    }
-                }
-            }
-            
-            // Remove duplicates and clean up
-            $activities = array_unique(array_filter($activities));
-            $learnings = array_unique(array_filter($learnings));
-            
-            $result['corrected_activities'] = $activities;
-            $result['corrected_learnings'] = $learnings;
             $result['summary for this section on a week'] = $result['summary'] ?? 'Students demonstrated comprehensive learning and skill development through various activities.';
         }
 

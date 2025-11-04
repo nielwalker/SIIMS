@@ -6,8 +6,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState("");
   const [scores, setScores] = useState(Array.from({ length: 15 }, () => 0));
-  const [posHitText, setPosHitText] = useState("");
-  const [posNotHitText, setPosNotHitText] = useState("");
   const [hitList, setHitList] = useState([]);
   const [notHitList, setNotHitList] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
@@ -33,8 +31,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
 
   async function loadSummary() {
     try {
-      // Loading state is already set in the useEffect above
-      // setLoading(true); // Removed - already set in useEffect
       setError(null);
       setNoSectionStudents(false);
 
@@ -47,9 +43,10 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
       const apiBase = import.meta.env.VITE_API_BASE_URL;
 
       let poContextHitFromBackend = null; // holds AI contextual PO hits like ['PO1','PO3'] when available
-      let aiRecommendationsFromBackend = null; // holds AI-generated recommendations
+      let poWordHitFromBackend = null; // holds AI keyword-based PO hits when available
+      let posHitFromBackend = null; // holds OpenAI's pos_hit array (complete PO analysis)
 
-      const computeScores = async () => {
+      const computeScores = async (skipHitLists = false) => {
         // Load students under this coordinator directly
         let filteredStudents = [];
         try {
@@ -213,10 +210,50 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
         // Compute keyword-only percentages (unrounded used for weighted blend; round only final)
         const keywordScore = counts.map((c) => (c / totalKeywordCount) * 100);
 
-        // Build AI contextual scores from backend poContextHit if available (0..1). Fallback to zeros.
+        // Build AI contextual scores from ALL OpenAI PO data (hybrid approach)
+        // Combine pos_hit, poContextHit, and poWordHit to get complete AI analysis
+        const allAIPOs = new Set();
+        
+        // Add POs from pos_hit (primary source - complete OpenAI analysis)
+        if (Array.isArray(posHitFromBackend) && posHitFromBackend.length > 0) {
+          posHitFromBackend.forEach(item => {
+            const po = typeof item === 'string' ? item : (item?.po || '');
+            if (po && po.match(/^PO\d+$/)) {
+              allAIPOs.add(po);
+            }
+          });
+        }
+        
+        // Add POs from poContextHit (contextual analysis from OpenAI)
+        if (Array.isArray(poContextHitFromBackend)) {
+          poContextHitFromBackend.forEach(po => {
+            if (typeof po === 'string' && po.match(/^PO\d+$/)) {
+              allAIPOs.add(po);
+            }
+          });
+        }
+        
+        // Add POs from poWordHit (keyword-based analysis from OpenAI)
+        if (Array.isArray(poWordHitFromBackend)) {
+          poWordHitFromBackend.forEach(po => {
+            if (typeof po === 'string' && po.match(/^PO\d+$/)) {
+              allAIPOs.add(po);
+            }
+          });
+        }
+        
+        // Build AI scores array (0..1) - 1 if PO is found in ANY OpenAI analysis, 0 otherwise
         const aiScores = Array.from({ length: 15 }, (_, i) => {
           const code = `PO${i + 1}`;
-          return Array.isArray(poContextHitFromBackend) && poContextHitFromBackend.includes(code) ? 1 : 0;
+          return allAIPOs.has(code) ? 1 : 0;
+        });
+        
+        console.log('Hybrid AI PO analysis:', {
+          pos_hit_count: Array.isArray(posHitFromBackend) ? posHitFromBackend.length : 0,
+          poContextHit_count: Array.isArray(poContextHitFromBackend) ? poContextHitFromBackend.length : 0,
+          poWordHit_count: Array.isArray(poWordHitFromBackend) ? poWordHitFromBackend.length : 0,
+          allAIPOs: Array.from(allAIPOs),
+          aiScores: aiScores
         });
 
         // If both keyword and AI are zero everywhere, just return zeros
@@ -242,136 +279,15 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
         setScores(finalScores);
         console.log('PO Scores computed (hybrid):', finalScores, 'Total entries:', weekEntries.length, 'Students:', filteredStudents.length);
 
-        // Build hit/not-hit lists and other activities overview
-        const PO_TITLES = [
-          'PO1','PO2','PO3','PO4','PO5','PO6','PO7','PO8','PO9','PO10','PO11','PO12','PO13','PO14','PO15'
-        ];
-        const KEY_HINT = keywordSets.map((arr) => arr.slice(0,3).join(', '));
-        const hits = [];
-        const notHits = [];
-        finalScores.forEach((v, idx) => {
-          if (v > 0) {
-            hits.push({ po: PO_TITLES[idx], reason: `Evidence of ${KEY_HINT[idx]}` });
-          } else {
-            notHits.push({ po: PO_TITLES[idx], reason: `No clear evidence of ${KEY_HINT[idx]}` });
-          }
-        });
-        setHitList(hits);
-        setNotHitList(notHits);
-
-        // This fallback logic is now handled in the main loadSummary function
-      };
-
-      // Helper method to aggregate weekly data
-      const aggregateWeeklyData = (weeklyData) => {
-        const allActivities = [];
-        const allLearnings = [];
-        const allAssessments = [];
-        
-        if (Array.isArray(weeklyData)) {
-          weeklyData.forEach(entry => {
-            if (entry.activities && Array.isArray(entry.activities)) {
-              allActivities.push(...entry.activities);
-            }
-            if (entry.learnings && Array.isArray(entry.learnings)) {
-              allLearnings.push(...entry.learnings);
-            }
-            if (entry.assessment) {
-              allAssessments.push(entry.assessment);
-            }
-          });
+        // IMPORTANT: Do NOT create hit/not-hit lists from keyword matching
+        // ONLY OpenAI's response (from backend) should determine which POs are achieved
+        // Keyword matching is ONLY used for hybrid scoring (graph visualization)
+        // hitList and notHitList should ONLY come from OpenAI's pos_hit and pos_not_hit arrays
+        if (!skipHitLists) {
+          console.log('Skipping hardcoded hit/not-hit list generation - only OpenAI determines PO achievements');
+        } else {
+          console.log('Skipping hitList/notHitList update - skipHitLists is true (backend provided data from OpenAI)');
         }
-        
-        // Remove duplicates and clean up
-        const uniqueActivities = [...new Set(allActivities)].filter(Boolean);
-        const uniqueLearnings = [...new Set(allLearnings)].filter(Boolean);
-        const combinedAssessment = allAssessments.join(' ');
-        
-        return {
-          corrected_activities: uniqueActivities,
-          corrected_learnings: uniqueLearnings,
-          "summary for this section on a week": combinedAssessment
-        };
-      };
-      
-      // Helper method to send data to OpenAI
-      const sendToOpenAI = async (data) => {
-        try {
-          console.log('Sending aggregated data to OpenAI:', data);
-          
-          // Fetch CSRF cookie first
-          try {
-            await fetch(`${apiBase}/sanctum/csrf-cookie`, {
-              method: 'GET',
-              credentials: 'include',
-            });
-          } catch (csrfError) {
-            console.log('CSRF cookie fetch failed, continuing anyway:', csrfError);
-          }
-          
-          // Try POST first
-          let openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
-            method: 'POST',
-            headers: {
-              ...authHeaders,
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest'
-            },
-            credentials: 'include',
-            body: JSON.stringify({
-              data: data,
-              type: 'overall_summary'
-            })
-          });
-          
-          // If POST fails with 419, try GET with query params as fallback
-          if (!openAIResponse.ok && openAIResponse.status === 419) {
-            console.log('POST failed with 419, trying GET fallback');
-            const query = encodeURIComponent(JSON.stringify(data));
-            openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize?data=${query}&type=overall_summary`, {
-              method: 'GET',
-              headers: {
-                ...authHeaders,
-                'X-Requested-With': 'XMLHttpRequest'
-              },
-              credentials: 'include',
-            });
-          }
-          
-          console.log('OpenAI response status:', openAIResponse.status);
-          
-          if (openAIResponse.ok) {
-            const openAIData = await openAIResponse.json();
-            console.log('OpenAI response data:', openAIData);
-            
-            if (openAIData.summary && openAIData.summary.trim()) {
-              // Clean up the summary by removing quotes and extra formatting
-              const cleanSummary = openAIData.summary
-                .replace(/^["']|["']$/g, '') // Remove surrounding quotes
-                .replace(/\\"/g, '"') // Unescape quotes
-                .replace(/\\n/g, ' ') // Replace newlines with spaces
-                .replace(/\s+/g, ' ') // Normalize whitespace
-                .trim();
-              
-              console.log('Using OpenAI summary:', cleanSummary);
-              setSummary(cleanSummary);
-              
-              // Compute scores for the aggregated data
-              await computeScores();
-              return;
-            } else {
-              console.log('OpenAI returned empty summary');
-            }
-          } else {
-            const errorText = await openAIResponse.text();
-            console.log('OpenAI API error:', openAIResponse.status, errorText);
-          }
-        } catch (error) {
-          console.error('OpenAI summarization failed:', error);
-        }
-        
-        // If OpenAI fails, show error message
-        setSummary('Unable to generate summary at this time. Please try again later.');
       };
 
       // Try backend summary first (Chair-specific route). If it fails, fall back to client-side.
@@ -379,6 +295,7 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
         // Use GET with query params to avoid 419 in some local setups
         const qp = new URLSearchParams();
         if (coordinatorId) qp.set('coordinatorId', coordinatorId);
+        if (sectionId) qp.set('sectionId', String(sectionId));
         if (week) qp.set('week', String(week));
         qp.set('useGPT', '1');
         const resp = await fetch(`${apiBase}/api/v1/summary/chair?${qp.toString()}`, {
@@ -389,14 +306,28 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
         if (resp.ok) {
           const data = await resp.json();
           console.log('Backend response:', data);
-          // capture AI contextual PO hits from backend (OpenAI-derived)
+          
+          // Capture ALL OpenAI PO analysis data for hybrid scoring
+          // pos_hit: Primary source - complete PO analysis from OpenAI
+          if (Array.isArray(data?.pos_hit)) {
+            posHitFromBackend = data.pos_hit;
+            console.log('Captured pos_hit from backend for hybrid scoring:', posHitFromBackend);
+          }
+          
+          // poContextHit: Contextual PO hits from OpenAI
           if (Array.isArray(data?.poContextHit)) {
             poContextHitFromBackend = data.poContextHit;
+            console.log('Captured poContextHit from backend for hybrid scoring:', poContextHitFromBackend);
+          }
+          
+          // poWordHit: Keyword-based PO hits from OpenAI
+          if (Array.isArray(data?.poWordHit)) {
+            poWordHitFromBackend = data.poWordHit;
+            console.log('Captured poWordHit from backend for hybrid scoring:', poWordHitFromBackend);
           }
           
           // Extract AI-generated recommendations from backend
           if (data?.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
-            aiRecommendationsFromBackend = data.recommendations;
             setRecommendations(data.recommendations);
             console.log('Loaded AI recommendations from backend:', data.recommendations);
           }
@@ -512,7 +443,8 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
                 
                 if (openAIResult.summary) {
                   setSummary(openAIResult.summary);
-                  await computeScores();
+                  // CRITICAL: Pass skipHitLists=true to preserve backend hitList data
+                  await computeScores(true);
                   return;
                 }
               } else {
@@ -526,260 +458,77 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
             const paragraph = buildParagraph(activities, learnings, assessment);
             console.log('Overall paragraph (local):', paragraph);
             setSummary(paragraph);
-            await computeScores();
+            // CRITICAL: Pass skipHitLists=true to preserve backend hitList data
+            await computeScores(true);
             return;
-            
-            // Fallback: Check if data is a string that needs parsing
-            let parsedData = data;
-            if (typeof data === 'string') {
-              try {
-                parsedData = JSON.parse(data);
-                console.log('Parsed string data:', parsedData);
-              } catch (e) {
-                console.log('Data is not JSON, treating as text');
-                parsedData = data;
-              }
-            }
-            
-            // If we have structured data, send to OpenAI for proper summarization
-            if (typeof parsedData === 'object' && (parsedData.corrected_activities || parsedData.corrected_learnings || parsedData["summary for this section on a week"])) {
-              console.log('Processing structured data for OpenAI summarization');
-              
-              // Test OpenAI endpoint first
-              try {
-                const testResponse = await fetch(`${apiBase}/api/v1/summary/openai-test`, {
-                  method: 'GET',
-                  headers: authHeaders,
-                  credentials: 'include'
-                });
-                
-                if (testResponse.ok) {
-                  const testData = await testResponse.json();
-                  console.log('OpenAI endpoint test:', testData);
-                } else {
-                  console.log('OpenAI endpoint test failed:', testResponse.status);
-                }
-              } catch (testError) {
-                console.log('OpenAI endpoint test error:', testError);
-              }
-              
-              // Send to OpenAI for summarization
-              try {
-                console.log('Sending data to OpenAI:', parsedData);
-                
-                // Fetch CSRF cookie first
-                try {
-                  await fetch(`${apiBase}/sanctum/csrf-cookie`, {
-                    method: 'GET',
-                    credentials: 'include',
-                  });
-                } catch (csrfError) {
-                  console.log('CSRF cookie fetch failed, continuing anyway:', csrfError);
-                }
-                
-                // Try POST first
-                let openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
-                  method: 'POST',
-                  headers: {
-                    ...authHeaders,
-                    'Content-Type': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                  },
-                  credentials: 'include',
-                  body: JSON.stringify({
-                    data: parsedData,
-                    type: 'overall_summary'
-                  })
-                });
-                
-                // If POST fails with 419, try GET with query params as fallback
-                if (!openAIResponse.ok && openAIResponse.status === 419) {
-                  console.log('POST failed with 419, trying GET fallback');
-                  const query = encodeURIComponent(JSON.stringify(parsedData));
-                  openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize?data=${query}&type=overall_summary`, {
-                    method: 'GET',
-                    headers: {
-                      ...authHeaders,
-                      'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    credentials: 'include',
-                  });
-                }
-                
-                console.log('OpenAI response status:', openAIResponse.status);
-                
-                if (openAIResponse.ok) {
-                  const openAIData = await openAIResponse.json();
-                  console.log('OpenAI response data:', openAIData);
-                  
-                  if (openAIData.summary && openAIData.summary.trim()) {
-                    // Clean up the summary by removing quotes and extra formatting
-                    const cleanSummary = openAIData.summary
-                      .replace(/^["']|["']$/g, '') // Remove surrounding quotes
-                      .replace(/\\"/g, '"') // Unescape quotes
-                      .replace(/\\n/g, ' ') // Replace newlines with spaces
-                      .replace(/\s+/g, ' ') // Normalize whitespace
-                      .trim();
-                    
-                    console.log('Using OpenAI summary:', cleanSummary);
-                    setSummary(cleanSummary);
-                    
-                    if (parsedData?.keywordScores && Array.isArray(parsedData.keywordScores)) {
-                      setScores(parsedData.keywordScores);
-                      console.log('Using backend PO scores:', parsedData.keywordScores);
-                    } else {
-                      await computeScores();
-                    }
-                    return;
-                  } else {
-                    console.log('OpenAI returned empty summary, trying fallback');
-                  }
-                } else {
-                  const errorText = await openAIResponse.text();
-                  console.log('OpenAI API error:', openAIResponse.status, errorText);
-                }
-              } catch (error) {
-                console.error('OpenAI summarization failed:', error);
-                console.error('Error details:', {
-                  message: error.message,
-                  stack: error.stack,
-                  name: error.name
-                });
-                setSummary('Unable to generate summary at this time. Please try again later.');
-                return;
-              }
-            } else if (typeof parsedData?.summary === 'string') {
-              // Check if summary contains JSON-like structure
-              if (parsedData.summary.includes('corrected_activities') && parsedData.summary.includes('corrected_learnings')) {
-                console.log('Summary contains structured data, attempting to extract');
-                try {
-                  // Try to extract structured data from the summary string
-                  const activitiesMatch = parsedData.summary.match(/"corrected_activities":\s*\[(.*?)\]/s);
-                  const learningsMatch = parsedData.summary.match(/"corrected_learnings":\s*\[(.*?)\]/s);
-                  const summaryMatch = parsedData.summary.match(/"summary for this section on a week":\s*"([^"]*)"/);
-                  
-                  if (activitiesMatch || learningsMatch || summaryMatch) {
-                    const extractList = (match) => {
-                      if (!match) return [];
-                      const content = match[1];
-                      const items = content.split(',').map(item => 
-                        item.replace(/^"|"$/g, '').trim()
-                      ).filter(Boolean);
-                      return items;
-                    };
-                    
-                    const activities = extractList(activitiesMatch);
-                    const learnings = extractList(learningsMatch);
-                    const assessment = summaryMatch ? summaryMatch[1] : '';
-                    
-                    console.log('Extracted from summary string - activities:', activities);
-                    console.log('Extracted from summary string - learnings:', learnings);
-                    console.log('Extracted from summary string - assessment:', assessment);
-                    
-                    // Send extracted data to OpenAI for proper summarization
-                    try {
-                      const openAIData = {
-                        corrected_activities: activities,
-                        corrected_learnings: learnings,
-                        "summary for this section on a week": assessment
-                      };
-                      
-                      // Fetch CSRF cookie first
-                      try {
-                        await fetch(`${apiBase}/sanctum/csrf-cookie`, {
-                          method: 'GET',
-                          credentials: 'include',
-                        });
-                      } catch (csrfError) {
-                        console.log('CSRF cookie fetch failed, continuing anyway:', csrfError);
-                      }
-                      
-                      // Try POST first
-                      let openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
-                        method: 'POST',
-                        headers: {
-                          ...authHeaders,
-                          'Content-Type': 'application/json',
-                          'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        credentials: 'include',
-                        body: JSON.stringify({
-                          data: openAIData,
-                          type: 'overall_summary'
-                        })
-                      });
-                      
-                      // If POST fails with 419, try GET with query params as fallback
-                      if (!openAIResponse.ok && openAIResponse.status === 419) {
-                        console.log('POST failed with 419, trying GET fallback');
-                        const query = encodeURIComponent(JSON.stringify(openAIData));
-                        openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize?data=${query}&type=overall_summary`, {
-                          method: 'GET',
-                          headers: {
-                            ...authHeaders,
-                            'X-Requested-With': 'XMLHttpRequest'
-                          },
-                          credentials: 'include',
-                        });
-                      }
-                      
-                      if (openAIResponse.ok) {
-                        const openAIResult = await openAIResponse.json();
-                        if (openAIResult.summary && openAIResult.summary.trim()) {
-                          const cleanSummary = openAIResult.summary
-                            .replace(/^["']|["']$/g, '')
-                            .replace(/\\"/g, '"')
-                            .replace(/\\n/g, ' ')
-                            .replace(/\s+/g, ' ')
-                            .trim();
-                          
-                          console.log('Using OpenAI summary from string extraction:', cleanSummary);
-                          setSummary(cleanSummary);
-                          
-                          if (parsedData?.keywordScores && Array.isArray(parsedData.keywordScores)) {
-                            setScores(parsedData.keywordScores);
-                          } else {
-                            await computeScores();
-                          }
-                          return;
-                        }
-                      }
-                    } catch (error) {
-                      console.log('OpenAI summarization failed for string extraction:', error);
-                    }
-                    
-                    setSummary('Unable to generate summary at this time. Please try again later.');
-                    return;
-                  }
-                } catch (e) {
-                  console.log('Failed to extract structured data from summary string:', e);
-                }
-              }
-              
-              // Fallback to regular summary cleaning
-              const cleanSum = String(parsedData.summary)
-                .replace(/<\s*\/? .*?>/g, ' ')
-                .replace(/&nbsp;/gi, ' ')
-                .replace(/&amp;/gi, '&')
-                .replace(/&lt;/gi, '<')
-                .replace(/&gt;/gi, '>')
-                .replace(/\s+/g, ' ')
-                .trim();
-              setSummary(cleanSum);
-              
-              if (parsedData?.keywordScores && Array.isArray(parsedData.keywordScores)) {
-                setScores(parsedData.keywordScores);
-                console.log('Using backend PO scores:', parsedData.keywordScores);
-              } else {
-                await computeScores();
-              }
-              return;
-            }
           }
           
-          // Handle regular week summaries
-          if (typeof data?.posHitExplanation === 'string') setPosHitText(data.posHitExplanation);
-          if (typeof data?.posNotHitExplanation === 'string') setPosNotHitText(data.posNotHitExplanation);
+          // Extract POS hit/not-hit arrays from backend for consistent display
+          // First, try pos_hit array
+          let hits = [];
+          console.log('Raw backend data.pos_hit:', data?.pos_hit);
+          console.log('Raw backend data.poContextHit:', data?.poContextHit);
+          console.log('Raw backend data.poWordHit:', data?.poWordHit);
+          
+          if (Array.isArray(data?.pos_hit) && data.pos_hit.length > 0) {
+            hits = data.pos_hit.map(item => ({
+              po: typeof item === 'string' ? item : (item?.po || ''),
+              reason: typeof item === 'object' && item?.reason ? item.reason : 'Evidence found in activities and learnings'
+            })).filter(item => item.po && item.po.trim() !== '');
+            console.log('Extracted hits from pos_hit:', hits);
+          }
+          
+          // Fallback: If pos_hit is empty but poContextHit exists (from OpenAI), use that
+          // These are still from OpenAI's response, just different fields in the JSON structure
+          if (hits.length === 0 && Array.isArray(data?.poContextHit) && data.poContextHit.length > 0) {
+            hits = data.poContextHit.map(poCode => {
+              const code = typeof poCode === 'string' ? poCode : (poCode?.po || poCode);
+              return {
+                po: code,
+                reason: 'Achieved through contextual activities and practical application of knowledge (OpenAI analysis)'
+              };
+            }).filter(item => item.po && item.po.trim() !== '');
+            console.log('Using poContextHit from OpenAI response as fallback for hits:', hits);
+          }
+          
+          // Fallback: If still empty but poWordHit exists (from OpenAI), use that
+          // These are still from OpenAI's response, just different fields in the JSON structure
+          if (hits.length === 0 && Array.isArray(data?.poWordHit) && data.poWordHit.length > 0) {
+            hits = data.poWordHit.map(poCode => {
+              const code = typeof poCode === 'string' ? poCode : (poCode?.po || poCode);
+              return {
+                po: code,
+                reason: 'Achieved through keyword matching and explicit evidence in activities (OpenAI analysis)'
+              };
+            }).filter(item => item.po && item.po.trim() !== '');
+            console.log('Using poWordHit from OpenAI response as fallback for hits:', hits);
+          }
+          
+          // Set hitList immediately - this is the source of truth from backend
+          // CRITICAL: Set this BEFORE calling computeScores to ensure it's not overwritten
+          if (hits.length > 0) {
+            setHitList(hits);
+            console.log('✅ Set hitList from backend data:', hits.length, 'items:', hits);
+          } else {
+            console.log('⚠️ No hits found in backend data - pos_hit, poContextHit, and poWordHit are all empty or missing');
+            // Keep existing hitList if we have one, don't overwrite with empty array
+          }
+          
+          let notHits = [];
+          if (Array.isArray(data?.pos_not_hit) && data.pos_not_hit.length > 0) {
+            // Use backend's pos_not_hit array directly for consistency
+            notHits = data.pos_not_hit.map(item => ({
+              po: typeof item === 'string' ? item : (item?.po || ''),
+              reason: typeof item === 'object' && item?.reason ? item.reason : ''
+            })).filter(item => item.po);
+            setNotHitList(notHits);
+            console.log('Set notHitList from backend data:', notHits.length, 'items');
+          }
+          
+          // Compute scores for the graph ONLY (don't update hit/not-hit lists)
+          // CRITICAL: Always pass skipHitLists=true when we have backend data to prevent overwriting
+          console.log('Calling computeScores with skipHitLists=true (preserving backend hitList)');
+          await computeScores(true); // Force skipHitLists=true to preserve backend data
           
           // Extract AI-generated recommendations from backend
           if (data?.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
@@ -797,65 +546,15 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
               .replace(/\s+/g, ' ')
               .trim();
 
-            try {
-              const openAIData = {
-                corrected_activities: Array.isArray(data.corrected_activities) ? data.corrected_activities : [],
-                corrected_learnings: Array.isArray(data.corrected_learnings) ? data.corrected_learnings : [],
-                'summary for this section on a week': clean,
-              };
-              
-              // Fetch CSRF cookie first
-              try {
-                await fetch(`${apiBase}/sanctum/csrf-cookie`, {
-                  method: 'GET',
-                  credentials: 'include',
-                });
-              } catch (csrfError) {
-                console.log('CSRF cookie fetch failed, continuing anyway:', csrfError);
-              }
-              
-              // Try POST first
-              let respAI = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
-                method: 'POST',
-                headers: { ...authHeaders, 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                credentials: 'include',
-                body: JSON.stringify({
-                  data: openAIData,
-                  type: 'week_summary',
-                }),
-              });
-              
-              // If POST fails with 419, try GET with query params as fallback
-              if (!respAI.ok && respAI.status === 419) {
-                console.log('POST failed with 419, trying GET fallback');
-                const query = encodeURIComponent(JSON.stringify(openAIData));
-                respAI = await fetch(`${apiBase}/api/v1/summary/openai-summarize?data=${query}&type=week_summary`, {
-                  method: 'GET',
-                  headers: { ...authHeaders, 'X-Requested-With': 'XMLHttpRequest' },
-                  credentials: 'include',
-                });
-              }
-              
-              if (respAI.ok) {
-                const ai = await respAI.json();
-                if (ai?.summary) {
-                  setSummary(String(ai.summary).replace(/\s+/g, ' ').trim());
-                } else {
-                  setSummary(clean);
-                }
-              } else {
-                setSummary(clean);
-              }
-            } catch (e) {
-              console.log('OpenAI week polish failed:', e);
-              setSummary(clean);
-            }
+            // Backend already processed summary with OpenAI, use it directly for better performance
+            setSummary(clean);
 
             if (data?.keywordScores && Array.isArray(data.keywordScores)) {
               setScores(data.keywordScores);
               console.log('Using backend PO scores:', data.keywordScores);
             } else {
-              await computeScores();
+              // CRITICAL: Pass skipHitLists=true to preserve backend hitList data
+              await computeScores(true);
             }
             return;
           }
@@ -870,7 +569,7 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
 
         // For "overall" case, create a comprehensive summary from all data
         if (week === "overall") {
-          let overallSummary = "";
+          
           
           // 1) Load students under this coordinator directly (chairperson-safe endpoint)
           let filteredStudents = [];
@@ -997,7 +696,8 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
             `;
             
             setSummary(overallSummary);
-            await computeScores();
+            // CRITICAL: Pass skipHitLists=true to preserve backend hitList data if it exists
+            await computeScores(true);
             return;
           }
         } else {
@@ -1075,8 +775,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
     setHitList([]);
     setNotHitList([]);
     setRecommendations([]);
-    setPosHitText("");
-    setPosNotHitText("");
     setError(null);
     setNoSectionStudents(false);
     
@@ -1117,9 +815,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
     });
   }, [onExportReady, coordinatorId, sectionId, week, summary, scores, hitList, notHitList, PO_DESCRIPTIONS]);
 
-  // Recommendations are now loaded from AI-generated backend response
-  // No hardcoded recommendations - all come from OpenAI analysis
-
   // Initialize Bootstrap tooltips
   useEffect(() => {
     const els = Array.from(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
@@ -1133,8 +828,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
     const instances = els.map((el) => new window.bootstrap.Tooltip(el));
     return () => { instances.forEach((i) => i.dispose()); };
   }, [scores]);
-
-  const hasAnyScore = useMemo(() => scores.some((v) => Number(v) > 0), [scores]);
 
   return (
     <div className="mt-6 bg-white border rounded-lg shadow-sm">
@@ -1182,13 +875,13 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
               {/* POs Hit */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <h5 className="text-lg font-semibold text-blue-800 mb-3">Program Outcomes Achieved</h5>
-                {hitList.length > 0 ? (
+                {hitList && hitList.length > 0 ? (
                   <div className="text-sm text-blue-700 leading-relaxed">
                     <p className="mb-2">Based on the analysis of student activities and reports, the following program outcomes have been successfully achieved:</p>
                     <ul className="list-disc list-inside space-y-1 text-blue-800">
                       {hitList.map((h, i) => (
                         <li key={`hit-${i}`}>
-                          <strong>{h.po}</strong> — {h.reason.toLowerCase()}
+                          <strong>{h.po}</strong> — {h.reason ? h.reason.toLowerCase() : 'Evidence found in activities and learnings'}
                         </li>
                       ))}
                     </ul>
@@ -1306,7 +999,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
                               const height = Math.max(4, Math.round((v / chartMax) * chartHeight));
                               const isAchieved = v > 0;
                               const barColor = isAchieved ? 'bg-primary' : 'bg-danger';
-                              const hoverColor = isAchieved ? 'bg-primary' : 'bg-danger';
                               
                               return (
                                 <div 

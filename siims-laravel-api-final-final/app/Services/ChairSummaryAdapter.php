@@ -38,14 +38,133 @@ class ChairSummaryAdapter
         $notHit = [];
         if (!$raw) return ['hit' => $hit, 'notHit' => $notHit];
         $content = (string)$raw;
+        
+        // Try to extract JSON from code blocks first
         $content = preg_replace_callback('/```json[\s\S]*?```/i', function ($m) {
             return preg_replace('/```json|```/i', '', $m[0]);
         }, $content) ?? $content;
-        $decoded = json_decode($content, true);
+        
+        // Try multiple JSON extraction methods - be aggressive in finding JSON
+        $decoded = null;
+        
+        // Method 1: Try to find JSON object with pos_hit (greedy match, handles nested objects)
+        if (preg_match('/\{[\s\S]*?"pos_hit"[\s\S]*?\}/', $content, $jsonMatch)) {
+            $decoded = json_decode($jsonMatch[0], true);
+            if (!is_array($decoded) || !isset($decoded['pos_hit'])) {
+                $decoded = null; // Try next method if this didn't work
+            }
+        }
+        
+        // Method 2: Try to find the largest JSON object (might contain pos_hit)
+        if (!$decoded && preg_match('/\{[\s\S]{20,}\}/', $content, $jsonMatch)) {
+            $decoded = json_decode($jsonMatch[0], true);
+        }
+        
+        // Method 3: Try decoding the entire content (if it's pure JSON)
+        if (!$decoded) {
+            $decoded = json_decode($content, true);
+        }
+        
+        // Method 4: Try to extract JSON from code blocks (already handled above, but try again)
+        if (!$decoded && preg_match('/```[\s\S]*?```/', $content)) {
+            $cleaned = preg_replace('/```(?:json)?/i', '', $content);
+            $cleaned = preg_replace('/```/', '', $cleaned);
+            $decoded = json_decode(trim($cleaned), true);
+        }
+        
+        // Method 5: Try to find JSON object by looking for opening and closing braces more carefully
+        if (!$decoded) {
+            $start = strpos($content, '{');
+            if ($start !== false) {
+                $braceCount = 0;
+                $end = $start;
+                for ($i = $start; $i < strlen($content); $i++) {
+                    if ($content[$i] === '{') $braceCount++;
+                    if ($content[$i] === '}') {
+                        $braceCount--;
+                        if ($braceCount === 0) {
+                            $end = $i;
+                            break;
+                        }
+                    }
+                }
+                if ($end > $start) {
+                    $jsonStr = substr($content, $start, $end - $start + 1);
+                    $decoded = json_decode($jsonStr, true);
+                }
+            }
+        }
+        
+        // Log for debugging
+        \Log::info('Extracting PO arrays', [
+            'has_decoded' => is_array($decoded),
+            'has_pos_hit' => isset($decoded['pos_hit']),
+            'has_po_context_hit' => isset($decoded['po_context_hit']),
+            'has_po_word_hit' => isset($decoded['po_word_hit']),
+            'content_preview' => substr($content, 0, 200)
+        ]);
+        
         if (is_array($decoded)) {
             $hit = is_array($decoded['pos_hit'] ?? null) ? $decoded['pos_hit'] : [];
             $notHit = is_array($decoded['pos_not_hit'] ?? null) ? $decoded['pos_not_hit'] : [];
+            
+            // Normalize pos_hit items to ensure they have 'po' and 'reason' keys
+            $hit = array_map(function($item) {
+                if (is_string($item)) {
+                    return ['po' => $item, 'reason' => 'Evidence found in activities and learnings'];
+                }
+                if (is_array($item)) {
+                    return [
+                        'po' => $item['po'] ?? $item[0] ?? '',
+                        'reason' => $item['reason'] ?? $item[1] ?? 'Evidence found in activities and learnings'
+                    ];
+                }
+                return null;
+            }, $hit);
+            $hit = array_filter($hit, function($item) {
+                return is_array($item) && !empty($item['po']);
+            });
+            $hit = array_values($hit);
+            
+            // If pos_hit is empty but we have po_context_hit, use that as fallback
+            if (empty($hit) && is_array($decoded['po_context_hit'] ?? null)) {
+                $contextHits = $decoded['po_context_hit'];
+                foreach ($contextHits as $poCode) {
+                    if (is_string($poCode) && preg_match('/^PO\d+$/', $poCode)) {
+                        $hit[] = [
+                            'po' => $poCode,
+                            'reason' => 'Achieved through contextual activities and practical application'
+                        ];
+                    }
+                }
+            }
+            
+            // Also check po_word_hit if pos_hit is still empty
+            if (empty($hit) && is_array($decoded['po_word_hit'] ?? null)) {
+                $wordHits = $decoded['po_word_hit'];
+                foreach ($wordHits as $poCode) {
+                    if (is_string($poCode) && preg_match('/^PO\d+$/', $poCode)) {
+                        // Check if already added from context_hit
+                        $exists = false;
+                        foreach ($hit as $existing) {
+                            if (($existing['po'] ?? '') === $poCode) {
+                                $exists = true;
+                                break;
+                            }
+                        }
+                        if (!$exists) {
+                            $hit[] = [
+                                'po' => $poCode,
+                                'reason' => 'Achieved through keyword matching and explicit evidence'
+                            ];
+                        }
+                    }
+                }
+            }
+            
+            \Log::info('Extracted PO arrays result', ['hit_count' => count($hit), 'not_hit_count' => count($notHit)]);
         }
+        
         return ['hit' => $hit, 'notHit' => $notHit];
     }
 
@@ -99,7 +218,7 @@ class ChairSummaryAdapter
         return $title.': '.implode('; ', $lines);
     }
 
-    public function summarize(string $text, ?int $week, bool $useGPT = false): array
+    public function summarize(string $text, ?int $week, bool $useGPT = false, array $activities = [], array $learnings = []): array
     {
         $clean = trim(preg_replace('/\s+/', ' ', strip_tags($text)) ?? '');
         $summary = $clean ?: 'No journal entries found.';
@@ -111,74 +230,289 @@ class ChairSummaryAdapter
             try {
                 $weekLabel = $week ? (string)$week : 'the selected week';
                 
-                // Comprehensive PO descriptions for context understanding
-                $poDescriptions = [
-                    'PO1' => 'Apply knowledge of computing, science, and mathematics appropriate to the discipline.',
-                    'PO2' => 'Analyze a complex computing problem and apply principles of computing and other relevant disciplines to identify solutions.',
-                    'PO3' => 'Design, implement, and evaluate a computing-based solution to meet a given set of computing requirements in the context of the program\'s discipline.',
-                    'PO4' => 'Use current techniques, skills, and tools necessary for computing practice.',
-                    'PO5' => 'Function effectively as a member or leader of a team engaged in activities appropriate to the program\'s discipline.',
-                    'PO6' => 'Communicate effectively with a range of audiences.',
-                    'PO7' => 'Analyze the local and global impact of computing on individuals, organizations, and society.',
-                    'PO8' => 'Recognize professional responsibilities and make informed judgments in computing practice based on legal and ethical principles.',
-                    'PO9' => 'Function effectively on teams to accomplish a common goal.',
-                    'PO10' => 'Identify and analyze user needs and take them into account in the selection, creation, evaluation, and administration of computer-based systems.',
-                    'PO11' => 'Design and develop computing solutions that integrate computing and non-computing requirements.',
-                    'PO12' => 'Apply appropriate techniques and tools for the specification, design, implementation, and testing of computer systems.',
-                    'PO13' => 'Recognize the need for and engage in continuing professional development.',
-                    'PO14' => 'Contribute effectively to the development of computing solutions in a team environment.',
-                    'PO15' => 'Demonstrate understanding of Filipino culture, values, and heritage in the context of computing solutions.'
+                // Comprehensive PO descriptions with detailed explanations and practical examples
+                $poDetailed = [
+                    'PO1' => [
+                        'description' => 'Apply knowledge of computing, science, and mathematics appropriate to the discipline.',
+                        'examples' => 'Using formulas, calculations, algorithms, data structures, programming logic, solving technical problems, applying theoretical concepts, working with databases, processing data, using mathematical operations.',
+                        'context_indicators' => 'Any activity involving problem-solving, coding, data manipulation, calculations, logical reasoning, applying programming concepts, working with software, handling technical challenges.'
+                    ],
+                    'PO2' => [
+                        'description' => 'Analyze a complex computing problem and apply principles of computing and other relevant disciplines to identify solutions.',
+                        'examples' => 'Troubleshooting, debugging, analyzing errors, identifying root causes, evaluating alternatives, making decisions, reviewing code, testing solutions, investigating issues, problem diagnosis.',
+                        'context_indicators' => 'Any mention of fixing bugs, solving problems, investigating issues, analyzing situations, making decisions, evaluating options, reviewing work, testing approaches.'
+                    ],
+                    'PO3' => [
+                        'description' => 'Design, implement, and evaluate a computing-based solution to meet a given set of computing requirements in the context of the program\'s discipline.',
+                        'examples' => 'Planning features, creating systems, building applications, developing modules, setting up configurations, implementing solutions, creating designs, building components.',
+                        'context_indicators' => 'Any activity involving creating, building, developing, implementing, designing, setting up, configuring, constructing systems or software components.'
+                    ],
+                    'PO4' => [
+                        'description' => 'Use current techniques, skills, and tools necessary for computing practice.',
+                        'examples' => 'Using programming languages, frameworks, libraries, APIs, development tools, software platforms, technology stacks, modern methodologies, industry tools.',
+                        'context_indicators' => 'Using any programming language, framework, tool, software, platform, library, API, or technology. Learning new tools, working with modern technologies, using development environments.'
+                    ],
+                    'PO5' => [
+                        'description' => 'Function effectively as a member or leader of a team engaged in activities appropriate to the program\'s discipline.',
+                        'examples' => 'Working with others, collaborating, team meetings, group projects, coordinating tasks, leading discussions, assisting colleagues, working together, sharing responsibilities.',
+                        'context_indicators' => 'Any mention of working with team members, colleagues, supervisors, meetings, collaboration, group work, coordinating, helping others, being part of a team.'
+                    ],
+                    'PO6' => [
+                        'description' => 'Communicate effectively with a range of audiences.',
+                        'examples' => 'Presentations, reports, emails, meetings, discussions, documentation, explaining concepts, writing documentation, verbal communication, written reports, presenting work.',
+                        'context_indicators' => 'Any form of communication: writing reports, emails, documentation, giving presentations, attending meetings, explaining work, discussing with others, verbal or written communication.'
+                    ],
+                    'PO7' => [
+                        'description' => 'Analyze the local and global impact of computing on individuals, organizations, and society.',
+                        'examples' => 'Understanding user impact, considering business effects, thinking about organizational benefits, recognizing social implications, understanding market needs, considering client impact.',
+                        'context_indicators' => 'Any mention of how work affects users, clients, organization, business, customers, stakeholders, or any consideration of broader impact or benefits.'
+                    ],
+                    'PO8' => [
+                        'description' => 'Recognize professional responsibilities and make informed judgments in computing practice based on legal and ethical principles.',
+                        'examples' => 'Following company policies, respecting confidentiality, handling data properly, ethical considerations, professional behavior, following procedures, adhering to standards, responsible practices.',
+                        'context_indicators' => 'Following policies, procedures, standards, ethical practices, professional conduct, handling sensitive information, respecting privacy, responsible behavior.'
+                    ],
+                    'PO9' => [
+                        'description' => 'Function effectively on teams to accomplish a common goal.',
+                        'examples' => 'Participating in team tasks, contributing to group objectives, working toward shared goals, team collaboration, group coordination, shared projects.',
+                        'context_indicators' => 'Working in teams, contributing to group efforts, participating in collaborative activities, working toward common objectives, team-based work.'
+                    ],
+                    'PO10' => [
+                        'description' => 'Identify and analyze user needs and take them into account in the selection, creation, evaluation, and administration of computer-based systems.',
+                        'examples' => 'Understanding requirements, gathering needs, considering user feedback, analyzing requirements, meeting user expectations, addressing client needs, user-focused work.',
+                        'context_indicators' => 'Any mention of understanding requirements, user needs, client requirements, stakeholder needs, user feedback, addressing needs, requirement gathering, meeting expectations.'
+                    ],
+                    'PO11' => [
+                        'description' => 'Design and develop computing solutions that integrate computing and non-computing requirements.',
+                        'examples' => 'Integrating systems, connecting components, working with business logic, integrating requirements, combining systems, system integration, connecting modules.',
+                        'context_indicators' => 'Integrating systems, connecting components, working with business processes, system integration, combining different elements, integration work.'
+                    ],
+                    'PO12' => [
+                        'description' => 'Apply appropriate techniques and tools for the specification, design, implementation, and testing of computer systems.',
+                        'examples' => 'Testing, quality assurance, debugging, verification, validation, checking functionality, ensuring quality, applying testing methods, using testing tools.',
+                        'context_indicators' => 'Testing work, quality assurance, debugging, verification, validation, checking systems, ensuring functionality, testing approaches, quality checks.'
+                    ],
+                    'PO13' => [
+                        'description' => 'Recognize the need for and engage in continuing professional development.',
+                        'examples' => 'Learning new things, self-study, researching, exploring new technologies, improving skills, seeking knowledge, studying resources, gaining expertise, professional growth.',
+                        'context_indicators' => 'Learning, studying, researching, exploring, improving skills, seeking knowledge, gaining experience, professional development, acquiring new knowledge.'
+                    ],
+                    'PO14' => [
+                        'description' => 'Contribute effectively to the development of computing solutions in a team environment.',
+                        'examples' => 'Contributing to projects, adding features, improving systems, enhancing solutions, providing input, making contributions, developing solutions together.',
+                        'context_indicators' => 'Contributing to development work, adding to projects, improving systems, enhancing solutions, making contributions, developing features, building solutions.'
+                    ],
+                    'PO15' => [
+                        'description' => 'Demonstrate understanding of Filipino culture, values, and heritage in the context of computing solutions.',
+                        'examples' => 'Using Filipino language, understanding local context, considering cultural aspects, working with local clients, understanding Filipino market, cultural awareness, local context.',
+                        'context_indicators' => 'Working with Filipino clients, understanding local context, using Filipino language, considering cultural aspects, local market understanding, cultural awareness.'
+                    ]
                 ];
                 
-                $sys = "You are an expert evaluator for BSIT (Bachelor of Science in Information Technology) internship journals. Your role is to analyze student internship reports and assess Program Outcomes (POs) achievement.
-
-PROGRAM OUTCOMES (PO1-PO15) CONTEXT:
-".implode("\n", array_map(function($code, $desc) {
-    return "{$code}: {$desc}";
-}, array_keys($poDescriptions), $poDescriptions))."
-
-YOUR TASKS:
-1. Correct and refine Activities and Learnings (improve grammar, punctuation, structure) without changing meaning.
-2. Produce a section-wide weekly summary (2-3 sentences) in THIRD-PERSON ONLY (use: students, they, their, them - NEVER use I, me, we, us, our).
-3. Identify Program Outcomes achieved (pos_hit) and NOT achieved (pos_not_hit) with specific, contextual reasons based on the PO descriptions above.
-4. Provide TWO distinct PO hit classifications:
-   - po_word_hit: Array of PO codes where explicit keywords/phrases from PO descriptions appear (e.g., ['PO1','PO4'])
-   - po_context_hit: Array of PO codes where achievement is implied through context even without explicit keywords (e.g., ['PO5','PO6'])
-5. Generate realistic, actionable RECOMMENDATIONS for improvement (recommendations) based on:
-   - POs that were NOT achieved (pos_not_hit)
-   - Patterns observed in student reports
-   - Areas needing more emphasis for future improvement
-   - Write recommendations in THIRD-PERSON (e.g., 'It is recommended that students focus on...' or 'The program should consider...')
-   - Make recommendations specific, practical, and relevant to BSIT internship context
-   - Provide 3-5 realistic recommendations
-
-CRITICAL REQUIREMENTS:
-- Understand the FULL CONTEXT of each PO before assigning it
-- For po_context_hit: Infer PO achievement from descriptions, actions, and results even if exact keywords are missing
-- For recommendations: Generate thoughtful, professional suggestions that sound like real academic recommendations
-- NEVER use first-person language in summary or recommendations
-- Start the summary with: 'In week {$weekLabel}, the students...'
-
-Return STRICT VALID JSON ONLY with these keys:
-- corrected_activities: array of strings
-- corrected_learnings: array of strings  
-- 'summary for this section on a week': string
-- pos_hit: array of {po: string, reason: string}
-- pos_not_hit: array of {po: string, reason: string}
-- po_word_hit: array of PO codes like ['PO1','PO3']
-- po_context_hit: array of PO codes like ['PO2','PO5']
-- recommendations: array of strings (3-5 realistic, third-person recommendations)";
+                $poContextGuide = "";
+                foreach ($poDetailed as $code => $info) {
+                    $poContextGuide .= "\n{$code}: {$info['description']}\n";
+                    $poContextGuide .= "Practical Examples: {$info['examples']}\n";
+                    $poContextGuide .= "What to Look For: {$info['context_indicators']}\n";
+                }
                 
-                $usr = "Combined student internship reports for the week (cleaned):\n".$clean;
+                $sys = "You are a BSIT internship evaluator. Your PRIMARY JOB is to identify Program Outcomes (POs) from raw weekly reports.
+
+PROGRAM OUTCOMES (PO1-PO15):
+{$poContextGuide}
+
+MANDATORY PO IDENTIFICATION PROCESS (YOU MUST DO THIS - NO EXCEPTIONS):
+Step 1: Read EVERY SINGLE activity/task and learning from RAW WEEKLY REPORT DATA section below
+Step 2: For EACH activity/learning, identify which POs it demonstrates using the mapping guide
+Step 3: Go through ALL 15 POs one by one and check if ANY activity/learning shows evidence
+Step 4: If you find ANY evidence, add it to pos_hit array with po and reason - BE LENIENT, not strict
+Step 5: Only add to pos_not_hit if you find ABSOLUTELY NO evidence after checking everything
+Step 6: BUILD pos_hit FIRST - it should contain objects like {\"po\": \"PO5\", \"reason\": \"...\"}
+Step 7: Then build po_context_hit and po_word_hit arrays from the pos_hit you found
+Step 8: Ensure pos_hit contains ALL POs from both po_context_hit AND po_word_hit combined
+
+PO RECOGNITION RULES (APPLY THESE):
+- \"Orientation\" or \"attended\" = PO5 (team), PO6 (communication), PO8 (professional), PO13 (learning)
+- \"Discussed\" or \"talked\" = PO6 (communication), PO5/PO9 (teamwork)
+- \"Learned about\" or \"understood\" = PO10 (requirements), PO13 (learning)
+- \"Used\" or \"worked with\" any tool/system = PO4 (tools/techniques)
+- \"Fixed\" or \"solved\" = PO1 (knowledge), PO2 (analysis)
+- \"Created\" or \"built\" = PO3 (design/implement), PO11 (integrate), PO14 (contribute)
+- \"Tested\" or \"checked\" = PO12 (testing)
+- \"Followed\" or \"adhered to\" = PO8 (professional/ethical)
+- ANY work done = Multiple POs achieved
+
+YOUR TASKS (IN ORDER):
+1. Read RAW WEEKLY REPORT DATA (Activities/Tasks and Learnings) - THIS IS YOUR SOURCE
+2. Refine activities/learnings (fix grammar only, preserve meaning)
+3. Generate summary in THIRD-PERSON (students, they, them - NO I, me, we)
+4. MANDATORY PO ANALYSIS: 
+   a) Go through EACH activity/learning
+   b) For EACH activity/learning, identify which POs it demonstrates
+   c) Build pos_hit array with objects: [{\"po\": \"PO5\", \"reason\": \"Students participated in orientation demonstrating teamwork\"}]
+   d) Build pos_not_hit array with POs that have NO evidence
+   e) Build po_word_hit array with PO codes where keywords were found
+   f) Build po_context_hit array with PO codes where context indicates achievement
+   g) Ensure pos_hit contains ALL POs from po_word_hit AND po_context_hit
+5. Recommendations: 3-5 SPECIFIC suggestions targeting pos_not_hit (e.g., \"Students should engage in hands-on programming to develop PO3 skills\" not vague \"improve technical skills\")
+
+CRITICAL ENFORCEMENT:
+- You MUST identify at least SOME POs if activities/learnings exist
+- Empty pos_hit is ONLY acceptable if activities/learnings section is completely empty
+- Be PROACTIVE in finding POs - if there's ANY connection, mark it
+- Check activities/learnings multiple times - you might miss POs on first pass
+- Every internship week typically demonstrates 3-8 POs minimum
+- If you see \"orientation\", \"discussed\", \"learned\" - these ALWAYS show PO5, PO6, PO13 at minimum
+
+JSON RESPONSE REQUIREMENTS:
+- Return ONLY valid JSON - no explanations, no text before or after
+- Start with { and end with }
+- pos_hit MUST be an array of objects: [{\"po\": \"PO5\", \"reason\": \"...\"}, ...]
+- Do NOT return empty pos_hit array if activities/learnings exist
+- ALL keys must be present: corrected_activities, corrected_learnings, summary for this section on a week, pos_hit, pos_not_hit, po_word_hit, po_context_hit, recommendations
+
+OUTPUT FORMAT (MANDATORY - RETURN THIS EXACT JSON STRUCTURE):
+You MUST return valid JSON with ALL these keys. Do NOT skip pos_hit even if you think no POs are achieved - analyze the activities/learnings and find at least some POs.
+
+{
+  \"corrected_activities\": [\"activity 1\", \"activity 2\"],
+  \"corrected_learnings\": [\"learning 1\", \"learning 2\"],
+  \"summary for this section on a week\": \"In week {$weekLabel}, the students...\",
+  \"pos_hit\": [
+    {\"po\": \"PO5\", \"reason\": \"Students participated in orientation activities demonstrating teamwork\"},
+    {\"po\": \"PO6\", \"reason\": \"Students engaged in discussions showing communication skills\"}
+  ],
+  \"pos_not_hit\": [
+    {\"po\": \"PO1\", \"reason\": \"No evidence of mathematical or computational knowledge application\"}
+  ],
+  \"po_word_hit\": [\"PO6\"],
+  \"po_context_hit\": [\"PO5\", \"PO6\", \"PO10\", \"PO13\"],
+  \"recommendations\": [
+    \"Students should engage in hands-on programming tasks to strengthen PO3 and PO4 achievement.\",
+    \"Implement structured peer review sessions to enhance PO5 and PO9 collaboration skills.\"
+  ]
+}
+
+CRITICAL: The pos_hit array MUST contain objects with \"po\" and \"reason\" keys. Do NOT return empty arrays if activities/learnings exist.
+
+FINAL VALIDATION CHECKLIST (DO THIS BEFORE RETURNING JSON):
+1. Did I read ALL activities/tasks from RAW WEEKLY REPORT DATA?
+2. Did I read ALL learnings from RAW WEEKLY REPORT DATA?
+3. Did I check EACH of the 15 POs against the activities/learnings?
+4. Did I build pos_hit array with objects containing \"po\" and \"reason\" keys?
+5. Is pos_hit array populated with at least some POs if activities/learnings exist?
+6. Did I combine all found POs into po_context_hit and po_word_hit arrays?
+7. Does pos_hit contain ALL POs from po_context_hit AND po_word_hit?
+
+CRITICAL FINAL REMINDER:
+Your response MUST be valid JSON starting with { and ending with }.
+The pos_hit array MUST be an array of objects: [{\"po\": \"PO5\", \"reason\": \"Students participated in orientation demonstrating teamwork\"}, ...]
+If you see activities/learnings about orientation, discussions, learning, house rules, or any work done, pos_hit MUST NOT be empty.
+DO NOT return empty pos_hit. Analyze the RAW WEEKLY REPORT DATA and identify the POs that are demonstrated.
+Return ONLY the JSON object, no additional text before or after.";
                 
-                $resp = Http::withToken($apiKey)->timeout(60)->post('https://api.openai.com/v1/chat/completions', [
+                // Prepare user message - separate summary generation from PO analysis
+                // For PO analysis, use activities and learnings directly (stable, doesn't change)
+                // For summary, use combined text (can vary)
+                
+                // Log what we're sending for PO analysis
+                \Log::info('ChairSummaryAdapter: Activities for PO analysis: ' . count($activities));
+                \Log::info('ChairSummaryAdapter: Learnings for PO analysis: ' . count($learnings));
+                
+                if (empty($activities) && empty($learnings)) {
+                    // Fallback: if activities/learnings are empty, use the clean text for PO analysis
+                    \Log::warning('ChairSummaryAdapter: No activities/learnings extracted, using combined text for PO analysis');
+                    $activitiesText = $clean;
+                    $learningsText = '';
+                } else {
+                    $activitiesText = !empty($activities) ? implode("\n", array_map(function($a, $i) {
+                        return ($i + 1) . ". " . $a;
+                    }, $activities, array_keys($activities))) : 'No specific activities documented.';
+                    
+                    $learningsText = !empty($learnings) ? implode("\n", array_map(function($l, $i) {
+                        return ($i + 1) . ". " . $l;
+                    }, $learnings, array_keys($learnings))) : 'No specific learnings documented.';
+                }
+                
+                // For summary generation, use combined text
+                $summaryText = $clean;
+                
+                // For PO analysis, use structured activities and learnings (RAW DATA FROM DATABASE)
+                $poAnalysisText = "=== RAW WEEKLY REPORT DATA (SOURCE OF TRUTH FOR PO ANALYSIS) ===\n\n" .
+                                 "STUDENT ACTIVITIES/TASKS (from database):\n" . $activitiesText . "\n\n" .
+                                 "STUDENT LEARNINGS (from database):\n" . $learningsText;
+                
+                // Update system prompt to separate PO analysis from summary
+                $sys = str_replace(
+                    'YOUR TASKS:',
+                    'PO ANALYSIS SOURCE (CRITICAL):
+- Analyze POs using ONLY "RAW WEEKLY REPORT DATA" (Activities/Tasks + Learnings)
+- IGNORE summary text for PO analysis - it changes and is unreliable
+- Activities/Learnings = SOURCE OF TRUTH for PO matching
+
+SUMMARY GENERATION:
+- Summary can vary based on combined text
+- Summary changes do NOT affect PO results
+
+YOUR TASKS:',
+                    $sys
+                );
+                
+                // Strengthen the contextual interpretation section
+                $sys = str_replace(
+                    'CONTEXTUAL INTERPRETATION METHODOLOGY:',
+                    'CONTEXTUAL INTERPRETATION METHODOLOGY:
+CRITICAL: Use ONLY "RAW WEEKLY REPORT DATA" for PO analysis. Ignore summary text completely.
+
+ENFORCED PROCESS:
+1. Read EVERY activity/task and learning - do not skip any
+2. For EACH activity/learning, ask: \"Which POs does this demonstrate?\"
+3. For EACH of 15 POs, ask: \"Do ANY activities/learnings show this PO?\"
+4. Be GENEROUS in interpretation - participated = teamwork (PO5/PO9), discussed = communication (PO6)
+5. Mark PO as achieved if there is ANY reasonable connection to activities/learnings
+6. Build pos_hit aggressively - it is better to include a PO than miss it
+7. Generate SPECIFIC recommendations with concrete actions
+
+COMMON ACTIVITY TO PO MAPPINGS:
+- Any meeting/orientation maps to PO5, PO6, PO8, PO13
+- Any discussion/talk maps to PO5, PO6
+- Any learning/understanding maps to PO10, PO13
+- Any tool/software use maps to PO4
+- Any problem solved maps to PO1, PO2
+- Any creation/development maps to PO3, PO11, PO14
+- Any testing maps to PO12
+- Any following rules maps to PO8
+
+CONTEXTUAL INTERPRETATION METHODOLOGY:',
+                    $sys
+                );
+                
+                // Create user message with both sections clearly separated
+                // Make PO analysis data MUCH more prominent and clear
+                $usr = "=== IGNORE THIS FOR PO ANALYSIS ===\n" .
+                       "SUMMARY GENERATION DATA (for summary only, can vary):\n" . 
+                       substr($summaryText, 0, 500) . "...\n\n" .
+                       "=========================================\n\n" .
+                       "=== USE THIS FOR PO ANALYSIS (RAW DATA FROM DATABASE - MANDATORY) ===\n" .
+                       $poAnalysisText . "\n\n" .
+                       "CRITICAL INSTRUCTIONS:\n" .
+                       "1. Read the STUDENT ACTIVITIES/TASKS and STUDENT LEARNINGS sections above\n" .
+                       "2. For each activity/learning, identify which POs it demonstrates\n" .
+                       "3. Build pos_hit array with objects: [{\"po\": \"PO5\", \"reason\": \"Students participated in orientation showing teamwork\"}, ...]\n" .
+                       "4. If you see words like 'participated', 'orientation', 'discussed', 'learned', 'house rules', 'projects' - these DEMONSTRATE MULTIPLE POs\n" .
+                       "5. pos_hit MUST NOT be empty if activities/learnings exist\n" .
+                       "6. Return valid JSON with pos_hit populated based on the RAW DATA above\n" .
+                       "Do NOT use the summary text for PO analysis.";
+                
+                $resp = Http::withToken($apiKey)->timeout(90)->post('https://api.openai.com/v1/chat/completions', [
                     'model' => 'gpt-4o-mini',
                     'messages' => [
                         ['role' => 'system', 'content' => $sys],
                         ['role' => 'user', 'content' => $usr],
                     ],
-                    'temperature' => 0.5,
-                    'max_tokens' => 2000, // Increased for better recommendations
+                    'temperature' => 0.2, // Very low temperature for maximum consistency and accuracy
+                    'max_tokens' => 3000, // Increased for comprehensive PO analysis and recommendations
+                    'top_p' => 0.95, // Nucleus sampling for focused responses
                 ]);
                 
                 if ($resp->ok()) {
@@ -188,9 +522,25 @@ Return STRICT VALID JSON ONLY with these keys:
                         $rawContent = $content; 
                         $summary = $this->normalizeSummary($content); 
                         $usedGPT = $summary !== '';
+                        
+                        // Log what OpenAI returned for debugging
+                        \Log::info('OpenAI Response Content:', [
+                            'length' => strlen($content), 
+                            'preview' => substr($content, 0, 1000),
+                            'has_pos_hit' => stripos($content, 'pos_hit') !== false,
+                            'has_json' => preg_match('/\{[\s\S]*\}/', $content) ? true : false
+                        ]);
+                    } else {
+                        \Log::warning('OpenAI returned empty content in response');
                     }
+                } else {
+                    \Log::error('OpenAI API request failed:', [
+                        'status' => $resp->status(),
+                        'body' => $resp->body()
+                    ]);
                 }
             } catch (\Throwable $e) {
+                \Log::error('OpenAI API Error:', ['message' => $e->getMessage()]);
                 // fallback to cleaned text summary
             }
         }
@@ -207,10 +557,22 @@ Return STRICT VALID JSON ONLY with these keys:
         $pos = $this->extractPosArrays($rawContent);
         $poTypes = $this->extractPoHitTypes($rawContent);
         $recommendations = $this->extractRecommendations($rawContent);
+        
+        // Log what we extracted from OpenAI for debugging
+        \Log::info('PO Extraction Results:', [
+            'pos_hit_count' => count($pos['hit']),
+            'pos_not_hit_count' => count($pos['notHit']),
+            'po_context_hit' => $poTypes['context'],
+            'po_word_hit' => $poTypes['word'],
+            'raw_content_length' => strlen($rawContent ?? ''),
+            'has_raw_content' => !empty($rawContent),
+            'raw_content_preview' => substr($rawContent ?? '', 0, 1000)
+        ]);
+        
         $posHitExplanation = $this->formatPosExplanation('Explanation on the POs hit', $pos['hit']);
         $posNotHitExplanation = $this->formatPosExplanation('Explanation on the POs not hit', $pos['notHit']);
 
-        return [
+        $result = [
             'summary' => $summary,
             'usedGPT' => $usedGPT,
             'posHitExplanation' => $posHitExplanation,
@@ -218,7 +580,72 @@ Return STRICT VALID JSON ONLY with these keys:
             'poWordHit' => $poTypes['word'],
             'poContextHit' => $poTypes['context'],
             'recommendations' => $recommendations,
+            'pos_hit' => $pos['hit'], // Include raw arrays for consistent frontend usage
+            'pos_not_hit' => $pos['notHit'],
         ];
+        
+        // Store activities and learnings separately (used for PO analysis, stable data)
+        if (!empty($activities)) {
+            $result['corrected_activities'] = $activities;
+        }
+        if (!empty($learnings)) {
+            $result['corrected_learnings'] = $learnings;
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * Fallback PO analysis directly from activities and learnings
+     * This ensures POs are identified even if OpenAI fails
+     */
+    private function analyzePosFromActivities(array $activities, array $learnings): array
+    {
+        $posHit = [];
+        $combinedText = strtolower(implode(' ', $activities) . ' ' . implode(' ', $learnings));
+        
+        // PO Mapping based on keywords and context
+        $poPatterns = [
+            'PO5' => ['participated', 'orientation', 'team', 'colleague', 'together', 'group', 'collaborat', 'meeting', 'discussed with'],
+            'PO6' => ['discussed', 'discussion', 'communicat', 'talked', 'presented', 'explained', 'reported', 'documented', 'wrote', 'report'],
+            'PO8' => ['rule', 'policy', 'procedure', 'followed', 'adhered', 'professional', 'standard', 'guideline', 'house rules'],
+            'PO10' => ['learned about', 'understood', 'requirements', 'needs', 'user', 'system', 'project', 'objective', 'vims', 'ibpls'],
+            'PO13' => ['learned', 'learned about', 'gained', 'insight', 'understanding', 'knowledge', 'study', 'researched'],
+            'PO4' => ['used', 'worked with', 'tool', 'software', 'system', 'application', 'technology', 'framework', 'platform'],
+            'PO3' => ['created', 'built', 'developed', 'implemented', 'designed', 'constructed', 'made', 'programmed'],
+            'PO1' => ['calculate', 'computed', 'solved', 'formula', 'algorithm', 'math', 'mathematical'],
+            'PO2' => ['analyzed', 'troubleshoot', 'debug', 'fixed', 'problem', 'issue', 'error', 'solved'],
+            'PO12' => ['tested', 'testing', 'checked', 'verified', 'validated', 'quality'],
+            'PO9' => ['team', 'group', 'collaborat', 'together', 'shared', 'coordinate'],
+            'PO7' => ['impact', 'affect', 'benefit', 'user', 'organization', 'society'],
+            'PO11' => ['integrated', 'integrate', 'combined', 'connected', 'linked'],
+            'PO14' => ['contributed', 'contribute', 'developed', 'built', 'created'],
+            'PO15' => ['filipino', 'culture', 'heritage', 'local', 'tagalog']
+        ];
+        
+        foreach ($poPatterns as $poCode => $patterns) {
+            foreach ($patterns as $pattern) {
+                if (stripos($combinedText, $pattern) !== false) {
+                    // Check if already added
+                    $exists = false;
+                    foreach ($posHit as $existing) {
+                        if (($existing['po'] ?? '') === $poCode) {
+                            $exists = true;
+                            break;
+                        }
+                    }
+                    if (!$exists) {
+                        $posHit[] = [
+                            'po' => $poCode,
+                            'reason' => 'Evidence found in activities and learnings through keyword and contextual analysis'
+                        ];
+                        break; // Found one match for this PO, move to next PO
+                    }
+                }
+            }
+        }
+        
+        return $posHit;
     }
 }
 
