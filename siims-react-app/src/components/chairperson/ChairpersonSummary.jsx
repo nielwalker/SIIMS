@@ -256,24 +256,84 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           aiScores: aiScores
         });
 
-        // If both keyword and AI are zero everywhere, just return zeros
+        // Check if we have OpenAI data
         const hasAnyAIScore = aiScores.some((v) => v > 0);
 
-        // Weights
+        // HYBRID APPROACH: Combine keyword matching + OpenAI analysis
+        // Weights: 40% keyword, 60% OpenAI
         const alpha = 0.4; // keyword weight
         const beta = 0.6;  // AI weight
 
+        // Build final scores using HYBRID approach
+        // CRITICAL: Graph MUST match "Program Outcomes Achieved" section exactly
+        // Only POs in pos_hit should have scores > 0 (pos_hit is the source of truth)
+        
+        // First, get the confirmed POs from OpenAI's pos_hit (primary source of truth)
+        const confirmedPOsFromPosHit = new Set();
+        if (Array.isArray(posHitFromBackend) && posHitFromBackend.length > 0) {
+          posHitFromBackend.forEach(item => {
+            const po = typeof item === 'string' ? item : (item?.po || '');
+            if (po && po.match(/^PO(\d+)$/)) {
+              confirmedPOsFromPosHit.add(po);
+            }
+          });
+        }
+        
+        // Build final scores - ONLY for POs confirmed in pos_hit
         let finalScores = Array.from({ length: 15 }, (_, i) => {
+          const poCode = `PO${i + 1}`;
           const k = keywordScore[i] || 0;
           const a = aiScores[i] || 0;
-          if (k === 0 && a === 0) return 0;
-          return Math.round((alpha * k) + (beta * a * 100));
+          
+          // ONLY calculate score if this PO is in OpenAI's pos_hit (confirmed achievements)
+          if (confirmedPOsFromPosHit.has(poCode)) {
+            // PO is confirmed by OpenAI - use hybrid formula: 40% keyword + 60% AI
+            const hybridScore = (alpha * k) + (beta * a * 100);
+            // Ensure minimum score of 50% for confirmed POs to ensure visible bars
+            return Math.max(50, Math.round(hybridScore));
+          }
+          
+          // PO is NOT in pos_hit - score must be 0 (graph should NOT show it)
+          return 0;
         });
 
         // If OpenAI/AI data missing entirely, fallback to keyword-only rounded percentages
-        if (!hasAnyAIScore) {
+        // But only if we have no pos_hit data at all
+        if (!hasAnyAIScore && confirmedPOsFromPosHit.size === 0) {
           finalScores = keywordScore.map((k) => Math.round(k));
         }
+        
+        // Final validation: Double-check that graph matches pos_hit exactly
+        // If a PO is in pos_hit but score is 0, calculate it
+        if (Array.isArray(posHitFromBackend) && posHitFromBackend.length > 0) {
+          posHitFromBackend.forEach(item => {
+            const po = typeof item === 'string' ? item : (item?.po || '');
+            if (po && po.match(/^PO(\d+)$/)) {
+              const poIndex = parseInt(po.match(/^PO(\d+)$/)[1]) - 1;
+              if (poIndex >= 0 && poIndex < 15 && finalScores[poIndex] === 0) {
+                // PO is in pos_hit but score is 0 - calculate it using hybrid approach
+                const k = keywordScore[poIndex] || 0;
+                const a = aiScores[poIndex] || 0;
+                const hybridScore = (alpha * k) + (beta * a * 100);
+                finalScores[poIndex] = Math.max(50, Math.round(hybridScore));
+              }
+            }
+          });
+        }
+        
+        // CRITICAL: Zero out any POs that are NOT in pos_hit (source of truth)
+        // This ensures graph ONLY shows POs that match "Program Outcomes Achieved"
+        for (let i = 0; i < 15; i++) {
+          const poCode = `PO${i + 1}`;
+          if (!confirmedPOsFromPosHit.has(poCode)) {
+            finalScores[i] = 0;
+          }
+        }
+        
+        console.log('Graph scores aligned with pos_hit:', {
+          confirmedPOs: Array.from(confirmedPOsFromPosHit),
+          finalScores: finalScores
+        });
 
         console.log('Total keyword matches:', totalKeywordCount, 'KeywordScore% (unrounded):', keywordScore, 'aiScores(0-1):', aiScores, 'Final%:', finalScores);
         setScores(finalScores);
@@ -521,9 +581,49 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
               po: typeof item === 'string' ? item : (item?.po || ''),
               reason: typeof item === 'object' && item?.reason ? item.reason : ''
             })).filter(item => item.po);
-            setNotHitList(notHits);
-            console.log('Set notHitList from backend data:', notHits.length, 'items');
           }
+          
+          // CRITICAL: Ensure ALL 15 POs are accounted for
+          // If a PO is not in hitList, it MUST be in notHitList
+          const allPOs = Array.from({ length: 15 }, (_, i) => `PO${i + 1}`);
+          const achievedPOs = new Set(hits.map(h => h.po));
+          const notAchievedPOs = new Set(notHits.map(h => h.po));
+          
+          // Find POs that are missing from both lists
+          const missingPOs = allPOs.filter(po => !achievedPOs.has(po) && !notAchievedPOs.has(po));
+          
+          // Add missing POs to notHitList with default reason
+          if (missingPOs.length > 0) {
+            const defaultReasons = {
+              'PO1': 'No evidence of mathematical or computational knowledge application.',
+              'PO2': 'No evidence of analyzing complex computing problems.',
+              'PO3': 'No evidence of designing or implementing computing-based solutions.',
+              'PO4': 'No evidence of using current techniques, skills, and tools.',
+              'PO5': 'No evidence of working effectively in teams.',
+              'PO6': 'No evidence of effective communication.',
+              'PO7': 'No evidence of assessing local and global impact of computing.',
+              'PO8': 'No evidence of professional and ethical responsibilities.',
+              'PO9': 'No evidence of effective project planning and management.',
+              'PO10': 'No evidence of identifying and analyzing user needs.',
+              'PO11': 'No evidence of integrating IT solutions.',
+              'PO12': 'No evidence of testing or quality assurance activities.',
+              'PO13': 'No evidence of continuing professional development.',
+              'PO14': 'No evidence of research and development participation.',
+              'PO15': 'No evidence of preserving Filipino historical and cultural heritage.'
+            };
+            
+            missingPOs.forEach(po => {
+              notHits.push({
+                po: po,
+                reason: defaultReasons[po] || `No evidence of achieving ${po} based on activities and learnings.`
+              });
+            });
+            
+            console.log(`Added ${missingPOs.length} missing POs to notHitList:`, missingPOs);
+          }
+          
+          setNotHitList(notHits);
+          console.log('Set notHitList from backend data (all 15 POs accounted for):', notHits.length, 'items');
           
           // Compute scores for the graph ONLY (don't update hit/not-hit lists)
           // CRITICAL: Always pass skipHitLists=true when we have backend data to prevent overwriting

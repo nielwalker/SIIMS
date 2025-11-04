@@ -350,11 +350,23 @@ YOUR TASKS (IN ORDER):
    a) Go through EACH activity/learning
    b) For EACH activity/learning, identify which POs it demonstrates
    c) Build pos_hit array with objects: [{\"po\": \"PO5\", \"reason\": \"Students participated in orientation demonstrating teamwork\"}]
-   d) Build pos_not_hit array with POs that have NO evidence
+   d) Build pos_not_hit array with ALL POs that have NO evidence - MUST include ALL 15 POs that are NOT in pos_hit
    e) Build po_word_hit array with PO codes where keywords were found
    f) Build po_context_hit array with PO codes where context indicates achievement
    g) Ensure pos_hit contains ALL POs from po_word_hit AND po_context_hit
-5. Recommendations: 3-5 SPECIFIC suggestions targeting pos_not_hit (e.g., \"Students should engage in hands-on programming to develop PO3 skills\" not vague \"improve technical skills\")
+5. Recommendations: Generate 3-5 REALISTIC, HUMANIZED, ACTIONABLE recommendations based on pos_not_hit
+   - Write in THIRD-PERSON (students, they, them) - sound like a real educator's suggestions
+   - Make them SPECIFIC and CONCRETE, not vague or generic
+   - Base recommendations on actual activities/learnings observed in the data
+   - Use natural, conversational language - avoid robotic or template-like phrasing
+   - Each recommendation should be a complete, natural sentence
+   - Focus on actionable steps students can take
+   - Examples of GOOD recommendations:
+     * \"Students should engage in collaborative programming projects to develop teamwork skills and achieve PO5.\"
+     * \"Encourage students to participate in code review sessions where they analyze and discuss software solutions, which will help develop PO2 analytical skills.\"
+     * \"Students would benefit from hands-on projects that require designing and implementing software solutions to strengthen PO3 and PO4 achievement.\"
+   - Avoid vague recommendations like \"improve technical skills\" or \"work on PO3\"
+   - Make recommendations sound like thoughtful, practical suggestions from an experienced educator
 
 CRITICAL ENFORCEMENT:
 - You MUST identify at least SOME POs if activities/learnings exist
@@ -388,8 +400,9 @@ You MUST return valid JSON with ALL these keys. Do NOT skip pos_hit even if you 
   \"po_word_hit\": [\"PO6\"],
   \"po_context_hit\": [\"PO5\", \"PO6\", \"PO10\", \"PO13\"],
   \"recommendations\": [
-    \"Students should engage in hands-on programming tasks to strengthen PO3 and PO4 achievement.\",
-    \"Implement structured peer review sessions to enhance PO5 and PO9 collaboration skills.\"
+    \"Students should engage in collaborative programming projects to develop teamwork skills and achieve PO5.\",
+    \"Encourage students to participate in code review sessions where they analyze and discuss software solutions, which will help develop PO2 analytical skills.\",
+    \"Students would benefit from hands-on projects that require designing and implementing software solutions to strengthen PO3 and PO4 achievement.\"
   ]
 }
 
@@ -403,12 +416,34 @@ FINAL VALIDATION CHECKLIST (DO THIS BEFORE RETURNING JSON):
 5. Is pos_hit array populated with at least some POs if activities/learnings exist?
 6. Did I combine all found POs into po_context_hit and po_word_hit arrays?
 7. Does pos_hit contain ALL POs from po_context_hit AND po_word_hit?
+8. CRITICAL: Did I build pos_not_hit array with ALL remaining POs (PO1-PO15) that are NOT in pos_hit? Every PO must be in either pos_hit OR pos_not_hit - no PO should be missing!
 
 CRITICAL FINAL REMINDER:
 Your response MUST be valid JSON starting with { and ending with }.
 The pos_hit array MUST be an array of objects: [{\"po\": \"PO5\", \"reason\": \"Students participated in orientation demonstrating teamwork\"}, ...]
 If you see activities/learnings about orientation, discussions, learning, house rules, or any work done, pos_hit MUST NOT be empty.
 DO NOT return empty pos_hit. Analyze the RAW WEEKLY REPORT DATA and identify the POs that are demonstrated.
+
+RECOMMENDATIONS REQUIREMENTS (CRITICAL FOR HUMANIZED OUTPUT):
+- Generate 3-5 recommendations based on pos_not_hit (POs that were NOT achieved)
+- Write in THIRD-PERSON: \"Students should...\", \"They need to...\", \"Encourage students to...\", \"It would be beneficial for students to...\"
+- Make each recommendation SPECIFIC, ACTIONABLE, and NATURAL-SOUNDING
+- Use natural, human-like language - avoid robotic, template-like, or generic phrasing
+- Base recommendations on actual activities/learnings from the data - be contextual
+- Each recommendation should be a complete, natural sentence that flows well
+- Vary the sentence structure and phrasing - don't repeat the same pattern
+- Make recommendations sound like thoughtful, practical suggestions from an experienced educator
+- Examples of GOOD (humanized) recommendations:
+  * \"Students should engage in collaborative programming projects to develop teamwork skills and achieve PO5.\"
+  * \"Encourage students to participate in code review sessions where they analyze and discuss software solutions, which will help develop PO2 analytical skills.\"
+  * \"Students would benefit from hands-on projects that require designing and implementing software solutions to strengthen PO3 and PO4 achievement.\"
+  * \"It would be valuable for students to work on projects that involve gathering user requirements and understanding stakeholder needs, as this will help them develop PO10 skills.\"
+- Examples of BAD (vague/robotic) recommendations to AVOID:
+  * \"Improve technical skills\" (too vague)
+  * \"Work on PO3\" (not actionable, too brief)
+  * \"Students need to develop PO5\" (sounds robotic)
+  * \"Enhance PO achievement\" (generic and meaningless)
+
 Return ONLY the JSON object, no additional text before or after.";
                 
                 // Prepare user message - separate summary generation from PO analysis
@@ -471,7 +506,7 @@ ENFORCED PROCESS:
 4. Be GENEROUS in interpretation - participated = teamwork (PO5/PO9), discussed = communication (PO6)
 5. Mark PO as achieved if there is ANY reasonable connection to activities/learnings
 6. Build pos_hit aggressively - it is better to include a PO than miss it
-7. Generate SPECIFIC recommendations with concrete actions
+7. Generate HUMANIZED, SPECIFIC recommendations with concrete actions - write like a real educator, not a robot
 
 COMMON ACTIVITY TO PO MAPPINGS:
 - Any meeting/orientation maps to PO5, PO6, PO8, PO13
@@ -558,10 +593,67 @@ CONTEXTUAL INTERPRETATION METHODOLOGY:',
         $poTypes = $this->extractPoHitTypes($rawContent);
         $recommendations = $this->extractRecommendations($rawContent);
         
+        // CRITICAL: Ensure ALL 15 POs are accounted for
+        // If a PO is not in pos_hit, it MUST be in pos_not_hit
+        $allPOs = array_map(function($i) {
+            return 'PO' . ($i + 1);
+        }, range(0, 14));
+        
+        $hitPOs = array_map(function($item) {
+            return is_string($item) ? $item : ($item['po'] ?? '');
+        }, $pos['hit']);
+        $hitPOs = array_filter($hitPOs, function($po) {
+            return !empty($po) && preg_match('/^PO\d+$/', $po);
+        });
+        
+        $notHitPOs = array_map(function($item) {
+            return is_string($item) ? $item : ($item['po'] ?? '');
+        }, $pos['notHit']);
+        $notHitPOs = array_filter($notHitPOs, function($po) {
+            return !empty($po) && preg_match('/^PO\d+$/', $po);
+        });
+        
+        // Find POs that are missing from both lists
+        $missingPOs = array_diff($allPOs, $hitPOs, $notHitPOs);
+        
+        // Add missing POs to pos_not_hit with default reasons
+        if (!empty($missingPOs)) {
+            $defaultReasons = [
+                'PO1' => 'No evidence of mathematical or computational knowledge application.',
+                'PO2' => 'No evidence of analyzing complex computing problems.',
+                'PO3' => 'No evidence of designing or implementing computing-based solutions.',
+                'PO4' => 'No evidence of using current techniques, skills, and tools.',
+                'PO5' => 'No evidence of working effectively in teams.',
+                'PO6' => 'No evidence of effective communication.',
+                'PO7' => 'No evidence of assessing local and global impact of computing.',
+                'PO8' => 'No evidence of professional and ethical responsibilities.',
+                'PO9' => 'No evidence of effective project planning and management.',
+                'PO10' => 'No evidence of identifying and analyzing user needs.',
+                'PO11' => 'No evidence of integrating IT solutions.',
+                'PO12' => 'No evidence of testing or quality assurance activities.',
+                'PO13' => 'No evidence of continuing professional development.',
+                'PO14' => 'No evidence of research and development participation.',
+                'PO15' => 'No evidence of preserving Filipino historical and cultural heritage.'
+            ];
+            
+            foreach ($missingPOs as $po) {
+                $pos['notHit'][] = [
+                    'po' => $po,
+                    'reason' => $defaultReasons[$po] ?? "No evidence of achieving {$po} based on activities and learnings."
+                ];
+            }
+            
+            \Log::info('Added missing POs to pos_not_hit', [
+                'missing_count' => count($missingPOs),
+                'missing_pos' => array_values($missingPOs)
+            ]);
+        }
+        
         // Log what we extracted from OpenAI for debugging
         \Log::info('PO Extraction Results:', [
             'pos_hit_count' => count($pos['hit']),
             'pos_not_hit_count' => count($pos['notHit']),
+            'total_accounted' => count($hitPOs) + count($pos['notHit']),
             'po_context_hit' => $poTypes['context'],
             'po_word_hit' => $poTypes['word'],
             'raw_content_length' => strlen($rawContent ?? ''),
