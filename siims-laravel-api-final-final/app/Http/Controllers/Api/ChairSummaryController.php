@@ -75,32 +75,106 @@ class ChairSummaryController extends Controller
         $activities = array_values(array_unique(array_filter($activities)));
         $learnings = array_values(array_unique(array_filter($learnings)));
         
-        // Combined text for summary generation (can vary)
-        $combined = $rows->map(function ($r) {
-            $t = trim(($r->tasks ?? '') . ' ' . ($r->learnings ?? ''));
-            $t = preg_replace('/\s+/', ' ', $t);
-            if ($t && !preg_match('/[.!?]$/', $t)) { $t .= '.'; }
-            return $t;
-        })->filter()->implode(' ');
-
-        // Enforce third-person phrasing before summarization (handles fallback too)
-        $combined = $this->convertToThirdPerson($combined);
-
-        \Log::info('ChairSummary: Combined text length: ' . strlen($combined));
-        \Log::info('ChairSummary: Activities count: ' . count($activities));
-        \Log::info('ChairSummary: Learnings count: ' . count($learnings));
+        // Create a hash of the weekly entries data to detect changes
+        // This ensures PO analysis is consistent as long as the data hasn't changed
+        $dataHash = hash('sha256', json_encode([
+            'activities' => $activities,
+            'learnings' => $learnings,
+            'coordinator_id' => $coordinatorId,
+            'section_id' => $sectionId,
+            'week' => $week
+        ]));
         
-        // Log sample activities and learnings for debugging
-        if (!empty($activities)) {
-            \Log::info('ChairSummary: Sample activities: ' . json_encode(array_slice($activities, 0, 3)));
+        // Check if we have cached PO analysis for this exact data
+        $cacheQuery = DB::table('po_analysis_cache')
+            ->where('coordinator_id', $coordinatorId)
+            ->where('data_hash', $dataHash);
+        
+        if ($sectionId) {
+            $cacheQuery->where('section_id', $sectionId);
+        } else {
+            $cacheQuery->whereNull('section_id');
         }
-        if (!empty($learnings)) {
-            \Log::info('ChairSummary: Sample learnings: ' . json_encode(array_slice($learnings, 0, 3)));
+        
+        if ($week) {
+            $cacheQuery->where('week_number', $week);
+        } else {
+            $cacheQuery->whereNull('week_number');
         }
+        
+        $cached = $cacheQuery->first();
+        
+        if ($cached) {
+            // Use cached results - consistent across refreshes
+            \Log::info('ChairSummary: Using cached PO analysis for hash: ' . substr($dataHash, 0, 8) . '...');
+            
+            $result = [
+                'summary' => $cached->summary,
+                'pos_hit' => json_decode($cached->pos_hit, true) ?? [],
+                'pos_not_hit' => json_decode($cached->pos_not_hit, true) ?? [],
+                'poContextHit' => json_decode($cached->po_context_hit, true) ?? [],
+                'poWordHit' => json_decode($cached->po_word_hit, true) ?? [],
+                'recommendations' => json_decode($cached->recommendations, true) ?? [],
+                'activities' => json_decode($cached->activities, true) ?? $activities,
+                'learnings' => json_decode($cached->learnings, true) ?? $learnings,
+                'cached' => true,
+            ];
+        } else {
+            // No cache found - generate new analysis
+            \Log::info('ChairSummary: No cache found, generating new PO analysis');
+            
+            // Combined text for summary generation (can vary)
+            $combined = $rows->map(function ($r) {
+                $t = trim(($r->tasks ?? '') . ' ' . ($r->learnings ?? ''));
+                $t = preg_replace('/\s+/', ' ', $t);
+                if ($t && !preg_match('/[.!?]$/', $t)) { $t .= '.'; }
+                return $t;
+            })->filter()->implode(' ');
 
-        // Use adapter - pass activities and learnings separately for PO analysis
-        // Summary generation is separate from PO analysis
-        $result = $adapter->summarize($combined, $week, $useGPT, $activities, $learnings);
+            // Enforce third-person phrasing before summarization (handles fallback too)
+            $combined = $this->convertToThirdPerson($combined);
+
+            \Log::info('ChairSummary: Combined text length: ' . strlen($combined));
+            \Log::info('ChairSummary: Activities count: ' . count($activities));
+            \Log::info('ChairSummary: Learnings count: ' . count($learnings));
+            
+            // Log sample activities and learnings for debugging
+            if (!empty($activities)) {
+                \Log::info('ChairSummary: Sample activities: ' . json_encode(array_slice($activities, 0, 3)));
+            }
+            if (!empty($learnings)) {
+                \Log::info('ChairSummary: Sample learnings: ' . json_encode(array_slice($learnings, 0, 3)));
+            }
+
+            // Use adapter - pass activities and learnings separately for PO analysis
+            // Summary generation is separate from PO analysis
+            $result = $adapter->summarize($combined, $week, $useGPT, $activities, $learnings);
+            
+            // Save to cache for future use (only if we have activities/learnings)
+            if (!empty($activities) || !empty($learnings)) {
+                try {
+                    DB::table('po_analysis_cache')->insert([
+                        'coordinator_id' => $coordinatorId,
+                        'section_id' => $sectionId ?? null,
+                        'week_number' => $week ?? null,
+                        'data_hash' => $dataHash,
+                        'pos_hit' => json_encode($result['pos_hit'] ?? []),
+                        'pos_not_hit' => json_encode($result['pos_not_hit'] ?? []),
+                        'po_context_hit' => json_encode($result['poContextHit'] ?? []),
+                        'po_word_hit' => json_encode($result['poWordHit'] ?? []),
+                        'recommendations' => json_encode($result['recommendations'] ?? []),
+                        'summary' => $result['summary'] ?? null,
+                        'activities' => json_encode($activities),
+                        'learnings' => json_encode($learnings),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                    \Log::info('ChairSummary: Saved PO analysis to cache with hash: ' . substr($dataHash, 0, 8) . '...');
+                } catch (\Exception $e) {
+                    \Log::error('ChairSummary: Failed to save cache: ' . $e->getMessage());
+                }
+            }
+        }
         // Ensure result summary is also third-person (extra safety for any model variation)
         if (isset($result['summary'])) {
             $result['summary'] = $this->convertToThirdPerson($result['summary']);
