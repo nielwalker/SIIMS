@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { postRequest } from "../../api/apiHelpers";
@@ -24,6 +24,7 @@ const StudentWeeklyAccomplishmentPage = () => {
     learnings: "",
   });
   const [lockedWeek, setLockedWeek] = useState(null);
+  const [pendingRequests, setPendingRequests] = useState([]); // Track pending requests
   const [searchParams] = useSearchParams();
   const [no_of_hours, setNo_of_hours] = useState(0);
   const [selectedWeek, setSelectedWeek] = useState(""); // For selecting week to export
@@ -46,6 +47,17 @@ const StudentWeeklyAccomplishmentPage = () => {
 
     const { name, value } = e.target;
     setCurrentWeek({ ...currentWeek, [name]: value });
+    
+    // Check if the week number has a pending request (not completed)
+    if (name === 'week_number') {
+      const weekNum = Number(value);
+      const hasPendingRequest = pendingRequests.some(req => req.week_number === weekNum && !req.completed);
+      if (hasPendingRequest) {
+        setLockedWeek(weekNum);
+      } else {
+        setLockedWeek(null);
+      }
+    }
   };
 
   const addReport = async () => {
@@ -62,11 +74,9 @@ const StudentWeeklyAccomplishmentPage = () => {
         const parsedHours = parseInt(currentWeek.hours, 10);
         if (parsedHours <= 0) {
           alert("Hours must be greater than 0.");
+          setLoading(false);
           return;
         }
-
-        setWeeklyReports([...weeklyReports, currentWeek]);
-        setNo_of_hours((prevNoOfHours) => prevNoOfHours + parsedHours);
 
         const payload = {
           week_number: Number(currentWeek.week_number),
@@ -85,6 +95,10 @@ const StudentWeeklyAccomplishmentPage = () => {
         });
 
         if (response) {
+          // Store the locked week before clearing
+          const completedWeek = lockedWeek;
+          
+          // Clear form completely after successful submission - do this FIRST
           setCurrentWeek({
             week_number: "",
             start_date: "",
@@ -93,18 +107,43 @@ const StudentWeeklyAccomplishmentPage = () => {
             tasks: "",
             learnings: "",
           });
-          // If we came from a coordinator request, mark it completed
+          
+          // Clear lockedWeek immediately after form clear
+          setLockedWeek(null);
+          
+          // Refresh weekly reports from server to get latest data
           try {
-            if (lockedWeek) {
+            const reportsResponse = await axiosClient.get(`/api/v1/weekly-accomplishment-reports/${applicationId}`);
+            if (reportsResponse?.data?.data) {
+              const reports = Array.isArray(reportsResponse.data.data) ? reportsResponse.data.data : [];
+              setWeeklyReports(reports);
+              // Recalculate total hours
+              const totalHours = reports.reduce((sum, report) => sum + parseInt(report.hours || 0, 10), 0);
+              setNo_of_hours(totalHours);
+            }
+          } catch (err) {
+            console.error('Error refreshing weekly reports:', err);
+            // Fallback: add to local state if refresh fails
+            setWeeklyReports([...weeklyReports, currentWeek]);
+            setNo_of_hours((prevNoOfHours) => prevNoOfHours + parsedHours);
+          }
+          
+          // If we came from a coordinator request, mark it completed
+          if (completedWeek) {
+            try {
               await axiosClient.get('/sanctum/csrf-cookie', { withCredentials: true });
               try {
-                await axiosClient.put('/api/v1/student/weekly-entry-requests/complete', { week_number: Number(lockedWeek) });
+                await axiosClient.put('/api/v1/student/weekly-entry-requests/complete', { week_number: Number(completedWeek) });
               } catch (err) {
                 // Fallback to original path if alias not present
-                await axiosClient.put('/api/v1/weekly-entry-requests/complete', { week_number: Number(lockedWeek) });
+                await axiosClient.put('/api/v1/weekly-entry-requests/complete', { week_number: Number(completedWeek) });
               }
+              // Refresh pending requests to remove completed one
+              await fetchPendingRequests();
+            } catch (err) {
+              console.error('Error completing weekly entry request:', err);
             }
-          } catch (_) {}
+          }
         }
       } else {
         alert("Please complete all fields.");
@@ -116,18 +155,51 @@ const StudentWeeklyAccomplishmentPage = () => {
     }
   };
 
-  // Pre-fill requested week if provided in query param
-  React.useEffect(() => {
-    const rq = searchParams.get('request_week');
-    if (rq) {
-      setLockedWeek(Number(rq));
-      setCurrentWeek((prev) => ({ ...prev, week_number: String(rq) }));
+  // Fetch pending requests on component mount
+  const fetchPendingRequests = async () => {
+    try {
+      await axiosClient.get('/sanctum/csrf-cookie', { withCredentials: true });
+      let resp;
+      try {
+        resp = await axiosClient.get('/api/v1/student/weekly-entry-requests');
+      } catch (err) {
+        // Fallback to original path if alias not present
+        resp = await axiosClient.get('/api/v1/weekly-entry-requests/student');
+      }
+      if (resp?.data?.data) {
+        const requests = Array.isArray(resp.data.data) ? resp.data.data : [];
+        // Filter out completed requests
+        const pendingOnly = requests.filter(req => !req.completed);
+        setPendingRequests(pendingOnly);
+        
+        // Check if there's a request_week query param and if it's in pending requests
+        const rq = searchParams.get('request_week');
+        if (rq) {
+          const weekNum = Number(rq);
+          const hasPendingRequest = pendingOnly.some(req => req.week_number === weekNum && !req.completed);
+          if (hasPendingRequest) {
+            setLockedWeek(weekNum);
+            setCurrentWeek((prev) => ({ ...prev, week_number: String(rq) }));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching pending requests:', error);
+      setPendingRequests([]);
     }
+  };
+
+  // Pre-fill requested week if provided in query param and it's actually pending
+  useEffect(() => {
+    fetchPendingRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const editReport = (index) => {
     const reportToEdit = weeklyReports[index];
     setEditingReport(index);
+    // Clear lockedWeek when editing (editing doesn't count as a new request)
+    setLockedWeek(null);
     setCurrentWeek(reportToEdit);
   };
 
@@ -142,6 +214,7 @@ const StudentWeeklyAccomplishmentPage = () => {
       )
     );
     setEditingReport(null);
+    // Clear form completely after saving edit
     setCurrentWeek({
       week_number: "",
       start_date: "",
@@ -150,6 +223,8 @@ const StudentWeeklyAccomplishmentPage = () => {
       tasks: "",
       learnings: "",
     });
+    // Clear lockedWeek after editing
+    setLockedWeek(null);
   };
 
   const deleteReport = (index) => {
@@ -330,7 +405,12 @@ const StudentWeeklyAccomplishmentPage = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">
-                  Week Number {lockedWeek ? <span className="ml-2 px-2 py-0.5 text-xs rounded bg-amber-200 text-amber-900">Requested</span> : null}
+                  Week Number {
+                    currentWeek.week_number && 
+                    pendingRequests.some(req => req.week_number === Number(currentWeek.week_number) && !req.completed) ? (
+                      <span className="ml-2 px-2 py-0.5 text-xs rounded bg-amber-200 text-amber-900">Requested</span>
+                    ) : null
+                  }
                 </label>
                 <input
                   type="number"
@@ -339,7 +419,7 @@ const StudentWeeklyAccomplishmentPage = () => {
                   onChange={handleChange}
                   placeholder="e.g., 1"
                   className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
-                  disabled={!!lockedWeek}
+                  disabled={!!lockedWeek && Number(currentWeek.week_number) === lockedWeek}
                 />
               </div>
               <div>

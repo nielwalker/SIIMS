@@ -658,42 +658,6 @@ CONTEXTUAL INTERPRETATION METHODOLOGY:',
             return !empty($po) && preg_match('/^PO\d+$/', $po);
         });
         
-        // Find POs that are missing from both lists
-        $missingPOs = array_diff($allPOs, $hitPOs, $notHitPOs);
-        
-        // Add missing POs to pos_not_hit with default reasons
-        if (!empty($missingPOs)) {
-            $defaultReasons = [
-                'PO1' => 'No evidence of mathematical or computational knowledge application.',
-                'PO2' => 'No evidence of analyzing complex computing problems.',
-                'PO3' => 'No evidence of designing or implementing computing-based solutions.',
-                'PO4' => 'No evidence of using current techniques, skills, and tools.',
-                'PO5' => 'No evidence of working effectively in teams.',
-                'PO6' => 'No evidence of effective communication.',
-                'PO7' => 'No evidence of assessing local and global impact of computing.',
-                'PO8' => 'No evidence of professional and ethical responsibilities.',
-                'PO9' => 'No evidence of effective project planning and management.',
-                'PO10' => 'No evidence of identifying and analyzing user needs.',
-                'PO11' => 'No evidence of integrating IT solutions.',
-                'PO12' => 'No evidence of testing or quality assurance activities.',
-                'PO13' => 'No evidence of continuing professional development.',
-                'PO14' => 'No evidence of research and development participation.',
-                'PO15' => 'No evidence of preserving Filipino historical and cultural heritage.'
-            ];
-            
-            foreach ($missingPOs as $po) {
-                $pos['notHit'][] = [
-                    'po' => $po,
-                    'reason' => $defaultReasons[$po] ?? "No evidence of achieving {$po} based on activities and learnings."
-                ];
-            }
-            
-            \Log::info('Added missing POs to pos_not_hit', [
-                'missing_count' => count($missingPOs),
-                'missing_pos' => array_values($missingPOs)
-            ]);
-        }
-        
         // Log what we extracted from OpenAI for debugging
         \Log::info('PO Extraction Results:', [
             'pos_hit_count' => count($pos['hit']),
@@ -731,63 +695,6 @@ CONTEXTUAL INTERPRETATION METHODOLOGY:',
         
         return $result;
     }
-<<<<<<< HEAD
-    
-    /**
-     * Fallback PO analysis directly from activities and learnings
-     * This ensures POs are identified even if OpenAI fails
-     */
-    private function analyzePosFromActivities(array $activities, array $learnings): array
-    {
-        $posHit = [];
-        $combinedText = strtolower(implode(' ', $activities) . ' ' . implode(' ', $learnings));
-        
-        // PO Mapping based on keywords and context
-        $poPatterns = [
-            'PO5' => ['participated', 'orientation', 'team', 'colleague', 'together', 'group', 'collaborat', 'meeting', 'discussed with'],
-            'PO6' => ['discussed', 'discussion', 'communicat', 'talked', 'presented', 'explained', 'reported', 'documented', 'wrote', 'report'],
-            'PO8' => ['rule', 'policy', 'procedure', 'followed', 'adhered', 'professional', 'standard', 'guideline', 'house rules'],
-            'PO10' => ['learned about', 'understood', 'requirements', 'needs', 'user', 'system', 'project', 'objective', 'vims', 'ibpls'],
-            'PO13' => ['learned', 'learned about', 'gained', 'insight', 'understanding', 'knowledge', 'study', 'researched'],
-            'PO4' => ['used', 'worked with', 'tool', 'software', 'system', 'application', 'technology', 'framework', 'platform'],
-            'PO3' => ['created', 'built', 'developed', 'implemented', 'designed', 'constructed', 'made', 'programmed'],
-            'PO1' => ['calculate', 'computed', 'solved', 'formula', 'algorithm', 'math', 'mathematical'],
-            'PO2' => ['analyzed', 'troubleshoot', 'debug', 'fixed', 'problem', 'issue', 'error', 'solved'],
-            'PO12' => ['tested', 'testing', 'checked', 'verified', 'validated', 'quality'],
-            'PO9' => ['team', 'group', 'collaborat', 'together', 'shared', 'coordinate'],
-            'PO7' => ['impact', 'affect', 'benefit', 'user', 'organization', 'society'],
-            'PO11' => ['integrated', 'integrate', 'combined', 'connected', 'linked'],
-            'PO14' => ['contributed', 'contribute', 'developed', 'built', 'created'],
-            'PO15' => ['filipino', 'culture', 'heritage', 'local', 'tagalog']
-        ];
-        
-        foreach ($poPatterns as $poCode => $patterns) {
-            foreach ($patterns as $pattern) {
-                if (stripos($combinedText, $pattern) !== false) {
-                    // Check if already added
-                    $exists = false;
-                    foreach ($posHit as $existing) {
-                        if (($existing['po'] ?? '') === $poCode) {
-                            $exists = true;
-                            break;
-                        }
-                    }
-                    if (!$exists) {
-                        $posHit[] = [
-                            'po' => $poCode,
-                            'reason' => 'Evidence found in activities and learnings through keyword and contextual analysis'
-                        ];
-                        break; // Found one match for this PO, move to next PO
-                    }
-                }
-            }
-        }
-        
-        return $posHit;
-    }
-
-=======
->>>>>>> ad4ed098e205915bc585724aebb446763e8ef82a
 }
 
 
