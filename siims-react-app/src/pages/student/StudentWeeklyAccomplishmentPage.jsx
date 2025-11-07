@@ -44,9 +44,10 @@ const StudentWeeklyAccomplishmentPage = () => {
   }, {});
 
   // Filter reports based on selected week
+  // Only show reports if a week is selected, otherwise show empty array
   const filteredReports = filterWeek 
     ? weeklyReports.filter(report => String(report.week_number) === String(filterWeek))
-    : weeklyReports;
+    : [];
 
   // Generate available weeks (1-13 for internship, or based on existing reports)
   const existingWeeks = Object.keys(groupedReports).map(w => Number(w)).filter(w => !isNaN(w));
@@ -531,7 +532,7 @@ const StudentWeeklyAccomplishmentPage = () => {
                     onChange={handleFilterWeekChange}
                     className="border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 px-4 py-2"
                   >
-                    <option value="">All Weeks</option>
+                    <option value="">Select Week</option>
                     {Object.keys(groupedReports).sort((a, b) => Number(a) - Number(b)).map((week) => (
                       <option key={week} value={week}>
                         Week {week}
@@ -692,7 +693,7 @@ const StudentWeeklyAccomplishmentPage = () => {
           {/* Weekly Reports Table */}
           <div className="bg-white shadow-md rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-4">
-              {filterWeek ? `Week ${filterWeek} Reports` : "All Reports"}
+              {filterWeek ? `Week ${filterWeek} Reports` : "Weekly Reports"}
             </h2>
             <div className="overflow-x-auto">
               <table className="min-w-full bg-white border border-gray-300">
@@ -711,7 +712,7 @@ const StudentWeeklyAccomplishmentPage = () => {
                   {filteredReports.length === 0 ? (
                     <tr>
                       <td colSpan="7" className="px-4 py-4 text-center text-gray-500">
-                        {filterWeek ? `No reports found for Week ${filterWeek}` : "No reports available"}
+                        {filterWeek ? `No reports found for Week ${filterWeek}` : "Please select a week to view reports"}
                       </td>
                     </tr>
                   ) : (
