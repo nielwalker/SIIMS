@@ -259,6 +259,30 @@ class ChairpersonStudentController extends Controller
             }
         }
 
+        // Only show section if it belongs to the assigned coordinator
+        $section = null;
+        $sectionName = null;
+        if ($student->section) {
+            // Check if section's coordinator matches the student's assigned coordinator
+            $sectionCoordinatorId = $student->section->coordinator_id ?? null;
+            if ($sectionCoordinatorId && $coordinatorId && (string)$sectionCoordinatorId === (string)$coordinatorId) {
+                // Section belongs to the assigned coordinator - show it
+                $section = [
+                    "id" => $student->section->id,
+                    "name" => $student->section->name,
+                ];
+                $sectionName = $student->section->name;
+            } elseif (!$coordinatorId && $sectionCoordinatorId) {
+                // Student has no coordinator but section has one - still show it (will be used as fallback)
+                $section = [
+                    "id" => $student->section->id,
+                    "name" => $student->section->name,
+                ];
+                $sectionName = $student->section->name;
+            }
+            // If section's coordinator doesn't match student's coordinator, don't show it (section = null)
+        }
+
         return [
             "id" => $student->id,
             // expose coordinator_id so frontend can filter by selected coordinator
@@ -276,11 +300,8 @@ class ChairpersonStudentController extends Controller
                 : "No coordinator",
             "company" => $companyName,
             "company_name" => $companyName,
-            "section" => $student->section ? [
-                "id" => $student->section->id,
-                "name" => $student->section->name,
-            ] : null,
-            "section_name" => $student->section ? $student->section->name : null,
+            "section" => $section,
+            "section_name" => $sectionName,
         ];
     }
 }

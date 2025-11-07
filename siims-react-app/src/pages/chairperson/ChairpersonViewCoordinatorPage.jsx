@@ -25,7 +25,7 @@ const ChairpersonViewCoordinatorPage = () => {
         Authorization: `Bearer ${JSON.parse(localStorage.getItem("ACCESS_TOKEN"))}`,
       };
 
-      // Pull students once via chairperson endpoint
+      // Pull students once via chairperson endpoint for student count
       let students = [];
       try {
         const r = await fetch(`${apiBase}/api/v1/chairperson/students`, { headers, credentials: "include" });
@@ -33,6 +33,7 @@ const ChairpersonViewCoordinatorPage = () => {
         students = Array.isArray(p?.data) ? p.data : (Array.isArray(p) ? p : []);
       } catch (_) {}
 
+      // Fallback keyword sets for when backend API doesn't return scores
       const keywordSets = [
         ["math", "mathematics", "science", "algorithm", "compute", "analysis"],
         ["best practice", "standard", "policy", "method", "procedure", "protocol"],
@@ -58,14 +59,23 @@ const ChairpersonViewCoordinatorPage = () => {
         .replace(/&gt;/gi, '>')
         .replace(/\s+/g, ' ')
         .trim();
+      const computeFromEntries = (list = []) => {
+        const text = list.map((r)=> `${stripHtml(r.tasks||r.task||r.activities||"")} ${stripHtml(r.learnings||r.learning||"")}`).join(' ').toLowerCase();
+        const counts = keywordSets.map((set)=> set.some((kw)=> text.includes(kw)) ? 1 : 0);
+        const nonZero = counts.reduce((a,b)=> a+b, 0);
+        return Math.round((nonZero/15)*100);
+      };
 
       const coordItems = Array.isArray(coordinators) ? coordinators.slice(0, 20) : [];
       const out = [];
+      
       for (const c of coordItems) {
         const id = String(c.id ?? c.user_id ?? c.coordinator_id ?? "");
         const label = `${id} - ${[c.first_name || c.firstName || '', c.last_name || c.lastName || ''].filter(Boolean).join(' ') || c.name || 'Coordinator'}`;
+        
+        // Student count for this coordinator
         const coordinatorKeyNames = ["coordinator_id", "coordinatorId", "coordinatorID", "coordinator_id_fk"]; 
-        let filtered = students.filter((s) => {
+        const assignedStudents = students.filter((s) => {
           for (const key of coordinatorKeyNames) {
             if (s && Object.prototype.hasOwnProperty.call(s, key)) {
               if (String(s[key] ?? "") === String(id)) return true;
@@ -74,23 +84,60 @@ const ChairpersonViewCoordinatorPage = () => {
           const cc = s.coordinator || s.ojt_coordinator || s.assignedCoordinator;
           const cid2 = cc ? (cc.id ?? cc.coordinator_id) : undefined;
           return String(cid2 ?? "") === String(id);
-        }).slice(0, 6);
-
-        const reqs = filtered.map((s) => {
-          const sid = s.id ?? s.student_id ?? s.user_id ?? s.application_id;
-          return fetch(`${apiBase}/api/v1/weekly-entries/student/${sid}`, { headers, credentials: "include" })
-            .then((r) => r.json()).catch(() => []);
         });
-        const weeklyPayloads = await Promise.all(reqs);
-        const normalizeWeekly = (p) => Array.isArray(p?.data) ? p.data : (Array.isArray(p?.weekly_entries) ? p.weekly_entries : (Array.isArray(p) ? p : []));
-        const all = weeklyPayloads.flatMap((p) => normalizeWeekly(p));
-        const text = all.map(r => `${stripHtml(r.tasks || r.task || r.activities || "")} ${stripHtml(r.learnings || r.learning || "")}`).join(' ');
-        const lower = text.toLowerCase();
-        const counts = keywordSets.map((set) => set.some((kw) => lower.includes(kw)) ? 1 : 0);
-        const coverage = counts.reduce((a,b)=>a+b,0);
-        const poCoveragePercent = Math.round((coverage / keywordSets.length) * 100);
-        out.push({ id, label, poCoveragePercent, entriesCount: all.length, studentsCount: filtered.length });
+        const studentsCount = assignedStudents.length;
+
+        // Fetch accurate keywordScores from backend using coordinatorId (overall)
+        let keywordScores = [];
+        let entriesCount = 0;
+        try {
+          const qp = new URLSearchParams({ coordinatorId: String(id), useGPT: '0', analysisType: 'chairman', isOverall: '1' });
+          const resp = await fetch(`${apiBase}/api/v1/summary/chair?${qp.toString()}`, {
+            method: 'GET', 
+            headers: { ...headers, 'X-Requested-With': 'XMLHttpRequest' }, 
+            credentials: 'include'
+          });
+          if (resp.ok) {
+            const j = await resp.json();
+            if (Array.isArray(j?.combinedScores)) {
+              keywordScores = j.combinedScores;
+            } else if (Array.isArray(j?.keywordScores)) {
+              keywordScores = j.keywordScores;
+            }
+          }
+        } catch (_) {}
+
+        // Calculate PO coverage from backend scores
+        let nonZero = (keywordScores || []).filter((v) => Number(v) > 0).length;
+        let poCoveragePercent = Math.round((nonZero / 15) * 100);
+
+        // Fetch entries count from weekly entries for all students under this coordinator
+        if (studentsCount === 0) {
+          poCoveragePercent = 0;
+          entriesCount = 0;
+        } else {
+          // Always fetch entries to get accurate count, and use for fallback if backend scores are empty
+          try {
+            const reqs = assignedStudents.map((s) => {
+              const sid = s.id ?? s.student_id ?? s.user_id ?? s.application_id;
+              return fetch(`${apiBase}/api/v1/weekly-entries/student/${sid}`, { headers, credentials: 'include' })
+                .then((r)=> r.json()).catch(()=> []);
+            });
+            const payloads = await Promise.all(reqs);
+            const normalize = (p)=> Array.isArray(p?.data) ? p.data : (Array.isArray(p?.weekly_entries) ? p.weekly_entries : (Array.isArray(p) ? p : []));
+            const entries = payloads.flatMap((p)=> normalize(p));
+            entriesCount = entries.length;
+            
+            // If backend didn't return scores, fallback to computing from entries
+            if (keywordScores.length === 0 && entries.length > 0) {
+              poCoveragePercent = computeFromEntries(entries);
+            }
+          } catch(_) {}
+        }
+
+        out.push({ id, label, poCoveragePercent, entriesCount, studentsCount });
       }
+      
       out.sort((a,b)=> b.poCoveragePercent - a.poCoveragePercent || b.entriesCount - a.entriesCount);
       setCoordinatorAnalytics(out);
     } catch (_) {
