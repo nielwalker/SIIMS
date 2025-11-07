@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Models\WeeklyEntry;
 use App\Repositories\WeeklyRecordRepositoryInterface;
 use Illuminate\Support\Facades\Auth;
 use Symfony\Component\HttpFoundation\Response;
@@ -66,6 +67,25 @@ class WeeklyRecordService
      */
     public function update(string $id = "", array $validated = [])
     {
+        // Find the existing record to get student_id
+        $existingRecord = $this->weeklyRecordRepositoryInterface->find($id);
+        if (!$existingRecord) {
+            abort(Response::HTTP_NOT_FOUND, 'Weekly Record not found.');
+        }
+
+        // Check if the new week already has 5 reports (excluding the current one)
+        $weekNumber = $validated['week_number'] ?? null;
+        $studentId = $validated['student_id'] ?? $existingRecord->student_id ?? null;
+        if ($weekNumber && $studentId) {
+            $existingReportsCount = WeeklyEntry::where('student_id', $studentId)
+                ->where('week_number', $weekNumber)
+                ->where('id', '!=', $id) // Exclude current report
+                ->count();
+            
+            if ($existingReportsCount >= 5) {
+                abort(Response::HTTP_UNPROCESSABLE_ENTITY, 'This week is already full. You can only have up to 5 reports per week.');
+            }
+        }
 
         // Update
         $record = $this->weeklyRecordRepositoryInterface->update($id, $validated);
@@ -129,6 +149,19 @@ class WeeklyRecordService
 
             // Add new key (student_id)
             $validated['student_id'] = $this->authUser->student->user_id;
+        }
+
+        // Check if this week already has 5 reports for this student
+        $weekNumber = $validated['week_number'] ?? null;
+        $studentId = $validated['student_id'] ?? null;
+        if ($weekNumber && $studentId) {
+            $existingReportsCount = WeeklyEntry::where('student_id', $studentId)
+                ->where('week_number', $weekNumber)
+                ->count();
+            
+            if ($existingReportsCount >= 5) {
+                abort(Response::HTTP_UNPROCESSABLE_ENTITY, 'This week is already full. You can only add up to 5 reports per week.');
+            }
         }
 
         // Create new record

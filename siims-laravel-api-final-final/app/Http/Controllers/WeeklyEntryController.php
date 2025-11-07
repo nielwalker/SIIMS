@@ -99,6 +99,22 @@ class WeeklyEntryController extends Controller
         // Find a specific weekly accomplishment entry by ID.
         $weeklyEntry = $this->findWeeklyEntry($week_entry_id, $applicationID);
 
+        // Check if the new week already has 5 reports (excluding the current one)
+        $weekNumber = $validated['week_number'] ?? null;
+        if ($weekNumber) {
+            $existingReportsCount = WeeklyEntry::where('application_id', $applicationID)
+                ->where('week_number', $weekNumber)
+                ->where('id', '!=', $week_entry_id) // Exclude current report
+                ->count();
+            
+            if ($existingReportsCount >= 5) {
+                return $this->jsonResponse([
+                    'error' => 'This week is already full. You can only have up to 5 reports per week.',
+                    'message' => 'This week is already full. You can only have up to 5 reports per week.'
+                ], 422);
+            }
+        }
+
         // Update and save weekly entry
         $weeklyEntry->update($validated);
         $weeklyEntry->save();
@@ -127,6 +143,21 @@ class WeeklyEntryController extends Controller
 
         // Find applicationID by ID
         $applicationID = $this->applicationController->findApplicationIdById($application_id);
+
+        // Check if this week already has 5 reports for this application
+        $weekNumber = $validated['week_number'] ?? null;
+        if ($weekNumber) {
+            $existingReportsCount = WeeklyEntry::where('application_id', $applicationID)
+                ->where('week_number', $weekNumber)
+                ->count();
+            
+            if ($existingReportsCount >= 5) {
+                return $this->jsonResponse([
+                    'error' => 'This week is already full. You can only add up to 5 reports per week.',
+                    'message' => 'This week is already full. You can only add up to 5 reports per week.'
+                ], 422);
+            }
+        }
 
         // Mass assign the Weekly Report
         $weeklyEntry = WeeklyEntry::create(array_merge(

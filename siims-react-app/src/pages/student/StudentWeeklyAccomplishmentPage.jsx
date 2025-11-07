@@ -94,6 +94,27 @@ const StudentWeeklyAccomplishmentPage = () => {
         currentWeek.tasks &&
         currentWeek.learnings
       ) {
+        // Check if week_number is provided
+        if (!currentWeek.week_number) {
+          alert("Please select a week number.");
+          setLoading(false);
+          return;
+        }
+
+        const weekNum = Number(currentWeek.week_number);
+        
+        // Check if this week already has 5 reports (excluding the one being edited)
+        const reportsForWeek = weeklyReports.filter(
+          report => Number(report.week_number) === weekNum && 
+          (editingReport === null || report.id !== editingReport.id)
+        );
+        
+        if (reportsForWeek.length >= 5) {
+          alert("This week is already full. You can only add up to 5 reports per week.");
+          setLoading(false);
+          return;
+        }
+
         const parsedHours = parseInt(currentWeek.hours, 10);
         if (parsedHours <= 0) {
           alert("Hours must be greater than 0.");
@@ -102,7 +123,7 @@ const StudentWeeklyAccomplishmentPage = () => {
         }
 
         const payload = {
-          week_number: Number(currentWeek.week_number),
+          week_number: weekNum,
           start_date: currentWeek.start_date,
           end_date: currentWeek.end_date,
           tasks: currentWeek.tasks,
@@ -273,8 +294,29 @@ const StudentWeeklyAccomplishmentPage = () => {
         return;
       }
 
+      // Check if week_number is provided
+      if (!currentWeek.week_number) {
+        alert("Please select a week number.");
+        setLoading(false);
+        return;
+      }
+
+      const weekNum = Number(currentWeek.week_number);
+      
+      // Check if the new week already has 5 reports (excluding the one being edited)
+      const reportsForWeek = weeklyReports.filter(
+        report => Number(report.week_number) === weekNum && 
+        report.id !== reportToUpdate.id // Exclude current report being edited
+      );
+      
+      if (reportsForWeek.length >= 5) {
+        alert("This week is already full. You can only have up to 5 reports per week.");
+        setLoading(false);
+        return;
+      }
+
       const payload = {
-        week_number: Number(currentWeek.week_number),
+        week_number: weekNum,
         start_date: currentWeek.start_date,
         end_date: currentWeek.end_date,
         tasks: currentWeek.tasks,

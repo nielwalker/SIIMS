@@ -250,6 +250,24 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
   const addWeeklyTimeRecord = async (e) => {
     e.preventDefault();
 
+    // Check if week_number is provided
+    if (!formData.week_number) {
+      alert("Please select a week number.");
+      return;
+    }
+
+    const weekNum = Number(formData.week_number);
+    
+    // Check if this week already has 5 reports (for adding new reports only)
+    const reportsForWeek = rows.filter(
+      report => Number(report.week_number) === weekNum
+    );
+    
+    if (reportsForWeek.length >= 5) {
+      alert("This week is already full. You can only add up to 5 reports per week.");
+      return;
+    }
+
     // console.log(formData);
     const completedWeek = lockedWeek; // Store before clearing
     await addWar({
@@ -280,6 +298,25 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
 
   const updateWeeklyTimeRecord = async (e) => {
     e.preventDefault();
+
+    // Check if week_number is provided
+    if (!formData.week_number) {
+      alert("Please select a week number.");
+      return;
+    }
+
+    const weekNum = Number(formData.week_number);
+    
+    // Check if the new week already has 5 reports (excluding the one being edited)
+    const reportsForWeek = rows.filter(
+      report => Number(report.week_number) === weekNum && 
+      report.id !== formData.id // Exclude current report being edited
+    );
+    
+    if (reportsForWeek.length >= 5) {
+      alert("This week is already full. You can only have up to 5 reports per week.");
+      return;
+    }
 
     await updateWar({
       authorizeRole: authorizeRole,
