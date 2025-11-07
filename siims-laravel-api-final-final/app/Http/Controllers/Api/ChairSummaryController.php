@@ -201,7 +201,9 @@ class ChairSummaryController extends Controller
     private function enforceWeekPrefix(string $text): string
     {
         $t = trim($text);
-        if ($t === '') return $t;
+        if ($t === '') {
+            return 'For this week, those students completed their weekly activities and learning outcomes.';
+        }
         if (preg_match('/^For\s+this\s+week,\s+those\s+students/i', $t)) {
             return $t;
         }

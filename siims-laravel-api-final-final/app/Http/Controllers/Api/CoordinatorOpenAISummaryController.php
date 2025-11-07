@@ -3,12 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Traits\OpenAIServiceTrait;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class CoordinatorOpenAISummaryController extends Controller
 {
+    use OpenAIServiceTrait;
     public function summarize(Request $request)
     {
         try {
@@ -33,7 +34,7 @@ class CoordinatorOpenAISummaryController extends Controller
                 }
                 $instruction = "You are an expert internship coach. For each coordinator below, generate 3-5 concrete weekly task suggestions to address their gap POs (POs with zero). Tasks must be short and actionable and MUST include the PO code (e.g., PO2). Return STRICT JSON ONLY in the exact shape {\"tasksPerCoordinator\":{\"<id>\":[\"task1\",\"task2\"]}} with no extra prose.";
                 $prompt = $instruction."\n\nCOORDINATORS:\n".json_encode($brief, JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES);
-                $resp = $this->callOpenAI($prompt);
+                $resp = $this->callCoordinatorOpenAI($prompt);
                 if ($resp['success']) {
                     $content = $resp['summary'];
                     $parsed = json_decode($content, true);
@@ -143,7 +144,7 @@ class CoordinatorOpenAISummaryController extends Controller
                     "TASK: No direct PO words matched. Use the definitions only for context; DO NOT mention PO codes. Return only the summary paragraph.";
             }
 
-            $response = $this->callOpenAI($prompt);
+            $response = $this->callCoordinatorOpenAI($prompt);
             if ($response['success']) {
                 $clean = $this->cleanText($response['summary']);
                 // Ensure intro
@@ -166,57 +167,10 @@ class CoordinatorOpenAISummaryController extends Controller
         }
     }
 
-    private function createCoordinatorPrompt($activities, $learnings, $assessment)
+
+    private function callCoordinatorOpenAI($prompt)
     {
-        $activitiesText = is_array($activities) ? implode(', ', $activities) : $activities;
-        $learningsText = is_array($learnings) ? implode(', ', $learnings) : $learnings;
-        return "You are an academic writing expert. Create a polished, professional weekly summary for a single student's internship report.
-
-STUDENT ACTIVITIES: {$activitiesText}
-
-LEARNING OUTCOMES: {$learningsText}
-
-ASSESSMENT: {$assessment}
-
-WRITING REQUIREMENTS:
-1. Begin EXACTLY with: 'For this week, the student '
-2. Write EXCLUSIVELY in third person (the student, they, their) — NEVER use first person (I, me, my, we, us, our)
-3. Convert list-like fragments into fluent sentences; avoid repeating labels like 'activities' or 'learnings'
-4. Produce 2–3 coherent sentences that synthesize ACTIVITIES and LEARNING OUTCOMES into a single narrative
-5. Ensure perfect grammar, punctuation, and sentence flow with academic tone
-6. Use transitional phrases (furthermore, moreover, consequently, etc.) to connect ideas
-7. Avoid redundancy and do not echo the inputs verbatim
-
-Generate a single, polished paragraph that reads like professional academic writing.";
-    }
-
-    private function callOpenAI($prompt)
-    {
-        try {
-            $apiKey = config('services.openai.api_key');
-            if (!$apiKey) {
-                return ['success' => false, 'error' => 'API key not configured'];
-            }
-            $resp = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $apiKey,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->post('https://api.openai.com/v1/chat/completions', [
-                'model' => 'gpt-3.5-turbo',
-                'messages' => [
-                    ['role' => 'user', 'content' => $prompt],
-                ],
-                'max_tokens' => 300,
-                'temperature' => 0.6,
-            ]);
-            if ($resp->successful()) {
-                $data = $resp->json();
-                $content = $data['choices'][0]['message']['content'] ?? '';
-                return ['success' => !empty($content), 'summary' => trim((string)$content)];
-            }
-            return ['success' => false, 'error' => 'API call failed'];
-        } catch (\Throwable $e) {
-            return ['success' => false, 'error' => $e->getMessage()];
-        }
+        return $this->callOpenAI($prompt, 'gpt-3.5-turbo', 300, 0.6, 30);
     }
 
     private function generateFallbackSummary($activities, $learnings, $assessment)
@@ -236,17 +190,6 @@ Generate a single, polished paragraph that reads like professional academic writ
         return trim(preg_replace('/\s+/', ' ', $summary));
     }
 
-    private function cleanDataArray($data)
-    {
-        if (!is_array($data)) return [];
-        return array_map(fn($t) => $this->cleanText($t), $data);
-    }
-
-    private function cleanText($text)
-    {
-        if (!is_string($text)) return '';
-        return trim(preg_replace('/\s+/', ' ', str_replace(['"', "'", '\\"', "\\'"], '', $text)));
-    }
 }
 
 

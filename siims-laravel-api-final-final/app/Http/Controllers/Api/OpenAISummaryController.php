@@ -3,12 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\Traits\OpenAIServiceTrait;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class OpenAISummaryController extends Controller
 {
+    use OpenAIServiceTrait;
     public function test()
     {
         $user = auth()->user();
@@ -84,7 +85,7 @@ class OpenAISummaryController extends Controller
                 // Clean the OpenAI response
                 $cleanSummary = $this->cleanText($response['summary']);
                 if ($type !== 'overall_summary') {
-                    $cleanSummary = $this->enforceWeekPrefix($cleanSummary);
+                    $cleanSummary = $this->enforceWeekPrefixForChair($cleanSummary);
                 }
                 
                 Log::info('OpenAI generated summary', ['summary' => $cleanSummary]);
@@ -98,7 +99,7 @@ class OpenAISummaryController extends Controller
                 
                 $fallbackSummary = $this->generateFallbackSummary($activities, $learnings, $assessment);
                 if ($type !== 'overall_summary') {
-                    $fallbackSummary = $this->enforceWeekPrefix($fallbackSummary);
+                    $fallbackSummary = $this->enforceWeekPrefixForChair($fallbackSummary);
                 }
                 
                 return response()->json([
@@ -123,7 +124,7 @@ class OpenAISummaryController extends Controller
                     $data['summary for this section on a week'] ?? ''
                 );
                 if (($request->input('type') ?? 'overall_summary') !== 'overall_summary') {
-                    $fallbackSummary = $this->enforceWeekPrefix($fallbackSummary);
+                    $fallbackSummary = $this->enforceWeekPrefixForChair($fallbackSummary);
                 }
                 
                 return response()->json([
@@ -282,62 +283,6 @@ STYLE GUIDELINES:
 Generate a single, polished paragraph that reads like professional academic writing.";
     }
     
-    private function callOpenAI($prompt)
-    {
-        try {
-            $apiKey = config('services.openai.api_key');
-            
-            if (!$apiKey) {
-                Log::warning('OpenAI API key not configured');
-                return ['success' => false, 'error' => 'API key not configured'];
-            }
-            
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $apiKey,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->post('https://api.openai.com/v1/chat/completions', [
-                'model' => 'gpt-3.5-turbo',
-                'messages' => [
-                    [
-                        'role' => 'user',
-                        'content' => $prompt
-                    ]
-                ],
-                'max_tokens' => 500,
-                'temperature' => 0.7
-            ]);
-            
-            if ($response->successful()) {
-                $data = $response->json();
-                $summary = $data['choices'][0]['message']['content'] ?? '';
-                
-                return [
-                    'success' => true,
-                    'summary' => trim($summary)
-                ];
-            } else {
-                Log::error('OpenAI API Error', [
-                    'status' => $response->status(),
-                    'body' => $response->body()
-                ]);
-                
-                return [
-                    'success' => false,
-                    'error' => 'API call failed'
-                ];
-            }
-            
-        } catch (\Exception $e) {
-            Log::error('OpenAI API Exception', [
-                'error' => $e->getMessage()
-            ]);
-            
-            return [
-                'success' => false,
-                'error' => $e->getMessage()
-            ];
-        }
-    }
     
     private function generateFallbackSummary($activities, $learnings, $assessment)
     {
@@ -367,40 +312,8 @@ Generate a single, polished paragraph that reads like professional academic writ
         return $summary;
     }
 
-    private function enforceWeekPrefix(string $text): string
+    private function enforceWeekPrefixForChair(string $text): string
     {
-        $t = trim($text);
-        if ($t === '') return 'For this week, those students completed their weekly activities and learning outcomes.';
-        // If it already starts with the desired phrase, return as is
-        if (preg_match('/^For\s+this\s+week,\s+those\s+students/i', $t)) {
-            return $t;
-        }
-        // Remove any leading connectors like "In week", "This week," etc.
-        $t = preg_replace('/^(In\s+week\s+\d+\s*,\s*|This\s+week\s*,\s*|In\s+this\s+week\s*,\s*)/i', '', $t);
-        return 'For this week, those students ' . ltrim($t);
-    }
-    
-    private function cleanDataArray($data)
-    {
-        if (!is_array($data)) {
-            return [];
-        }
-        
-        return array_map(function($item) {
-            return $this->cleanText($item);
-        }, $data);
-    }
-    
-    private function cleanText($text)
-    {
-        if (!is_string($text)) {
-            return $text;
-        }
-        
-        return trim(
-            preg_replace('/\s+/', ' ', // Normalize whitespace
-                str_replace(['"', "'", '\\"', "\\'"], '', $text) // Remove quotes
-            )
-        );
+        return $this->enforceWeekPrefix($text, 'For this week, those students ');
     }
 }
