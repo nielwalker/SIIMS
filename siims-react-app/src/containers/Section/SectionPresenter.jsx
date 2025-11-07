@@ -4,8 +4,8 @@ import Section from "../../components/common/Section";
 import Heading from "../../components/common/Heading";
 import Text from "../../components/common/Text";
 import SearchableDropdown from "./components/SearchableDropdown";
-import { Button, Input } from "@headlessui/react";
-import { Plus, Search, UserCog, UserCogIcon } from "lucide-react";
+import { Input } from "@headlessui/react";
+import { Search } from "lucide-react";
 import Modal from "../../components/modals/Modal";
 import SectionForm from "./forms/SectionForm";
 import DynamicDataGrid from "./components/DynamicDataGrid";
@@ -132,16 +132,6 @@ const SectionPresenter = ({
 
           </div>
         )}
-
-        <div className="flex items-center justify-end gap-3">
-          <Button
-            className="flex gap-1 items-center text-sm px-2 py-2 bg-blue-500 hover:bg-blue-600 rounded-sm text-white font-semibold transition"
-            onClick={() => setIsOpenSection(!isOpenSection)}
-          >
-            <Plus size={15} />
-            Add New Section
-          </Button>
-        </div>
       </div>
 
       <div>
