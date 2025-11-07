@@ -223,11 +223,30 @@ class ChairSummaryAdapter
     public function summarize(string $text, ?int $week, bool $useGPT = false, array $activities = [], array $learnings = []): array
     {
         $clean = trim(preg_replace('/\s+/', ' ', strip_tags($text)) ?? '');
-        $summary = $clean ?: 'No journal entries found.';
+        $summary = '';
         $usedGPT = false;
         $rawContent = null;
 
         $apiKey = env('OPENAI_API_KEY');
+        
+        // Check if OpenAI is required but not available
+        if ($useGPT && !$apiKey) {
+            \Log::warning('OpenAI API key not configured');
+            return [
+                'error' => 'OpenAI is not available right now',
+                'openai_unavailable' => true,
+                'summary' => '',
+                'usedGPT' => false,
+                'posHitExplanation' => '',
+                'posNotHitExplanation' => '',
+                'poWordHit' => [],
+                'poContextHit' => [],
+                'recommendations' => [],
+                'pos_hit' => [],
+                'pos_not_hit' => [],
+            ];
+        }
+        
         if ($useGPT && $apiKey && $clean) {
             try {
                 $weekLabel = $week ? (string)$week : 'the selected week';
@@ -591,54 +610,33 @@ CONTEXTUAL INTERPRETATION METHODOLOGY:',
             }
         }
 
-        // Extract PO analysis from OpenAI response or use fallback
+        // Extract PO analysis from OpenAI response - NO FALLBACK
         if ($usedGPT && !empty($rawContent)) {
             // OpenAI succeeded - extract from response
             $pos = $this->extractPosArrays($rawContent);
             $poTypes = $this->extractPoHitTypes($rawContent);
             $recommendations = $this->extractRecommendations($rawContent);
         } else {
-            // OpenAI not used or failed - use fallback keyword-based analysis
-            if (!empty($activities) || !empty($learnings)) {
-                \Log::info('Using fallback PO analysis from activities/learnings', [
-                    'openai_used' => $usedGPT,
-                    'has_raw_content' => !empty($rawContent),
-                    'activities_count' => count($activities),
-                    'learnings_count' => count($learnings)
-                ]);
-                
-                $posHit = $this->analyzePosFromActivities($activities, $learnings);
-                $pos = [
-                    'hit' => $posHit,
-                    'notHit' => []
-                ];
-                $poTypes = ['word' => [], 'context' => []];
-                $recommendations = [];
-                
-                // Extract PO codes from hits for poTypes
-                foreach ($pos['hit'] as $hit) {
-                    $poCode = $hit['po'] ?? '';
-                    if (preg_match('/^PO\d+$/', $poCode)) {
-                        $poTypes['context'][] = $poCode;
-                    }
-                }
-                $poTypes['context'] = array_values(array_unique($poTypes['context']));
-            } else {
-                // No activities/learnings available
-                \Log::warning('No activities or learnings available for PO analysis');
-                $pos = ['hit' => [], 'notHit' => []];
-                $poTypes = ['word' => [], 'context' => []];
-                $recommendations = [];
-            }
+            // OpenAI not available - return error status
+            \Log::warning('OpenAI is not available', [
+                'openai_used' => $usedGPT,
+                'has_raw_content' => !empty($rawContent),
+                'api_key_configured' => !empty(env('OPENAI_API_KEY'))
+            ]);
             
-            // Generate simple fallback summary if OpenAI wasn't used
-            if (!$usedGPT && $clean) {
-                $parts = array_values(array_filter(array_map('trim', preg_split('/[.!?]+/', $clean) ?: [])));
-                $take = array_slice($parts, 0, min(3, count($parts)));
-                if (!empty($take)) {
-                    $summary = implode('. ', $take) . '.';
-                }
-            }
+            return [
+                'error' => 'OpenAI is not available right now',
+                'openai_unavailable' => true,
+                'summary' => '',
+                'usedGPT' => false,
+                'posHitExplanation' => '',
+                'posNotHitExplanation' => '',
+                'poWordHit' => [],
+                'poContextHit' => [],
+                'recommendations' => [],
+                'pos_hit' => [],
+                'pos_not_hit' => [],
+            ];
         }
         
         // CRITICAL: Ensure ALL 15 POs are accounted for

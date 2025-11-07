@@ -368,9 +368,37 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           headers: authHeaders,
           credentials: 'include',
         });
+        
+        // Handle 503 Service Unavailable (OpenAI not available)
+        if (resp.status === 503) {
+          const data = await resp.json().catch(() => ({}));
+          setError(data?.error || 'OpenAI is not available right now');
+          setSummary("");
+          setScores(Array.from({ length: 15 }, () => 0));
+          setHitList([]);
+          setNotHitList([]);
+          setRecommendations([]);
+          setNoSectionStudents(false);
+          setLoading(false);
+          return;
+        }
+        
         if (resp.ok) {
           const data = await resp.json();
           console.log('Backend response:', data);
+          
+          // Check if OpenAI is unavailable
+          if (data?.openai_unavailable || data?.error === 'OpenAI is not available right now') {
+            setError('OpenAI is not available right now');
+            setSummary("");
+            setScores(Array.from({ length: 15 }, () => 0));
+            setHitList([]);
+            setNotHitList([]);
+            setRecommendations([]);
+            setNoSectionStudents(false);
+            setLoading(false);
+            return;
+          }
           
           // Check if backend returned empty results (no weekly entries) for a selected section
           // This indicates the section has no students or no weekly entries
@@ -396,6 +424,7 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           
           // Clear the no students error if we have data
           setNoSectionStudents(false);
+          setError(null);
           
           // Capture ALL OpenAI PO analysis data for hybrid scoring
           // pos_hit: Primary source - complete PO analysis from OpenAI

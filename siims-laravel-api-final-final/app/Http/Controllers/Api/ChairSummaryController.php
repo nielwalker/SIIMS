@@ -106,32 +106,20 @@ class ChairSummaryController extends Controller
         
         if ($cached) {
             // Use cached results - consistent across refreshes
-            $cachedPosHit = json_decode($cached->pos_hit, true) ?? [];
+            \Log::info('ChairSummary: Using cached PO analysis for hash: ' . substr($dataHash, 0, 8) . '...');
             
-            // If cached data has empty pos_hit but we have activities/learnings, regenerate
-            // This fixes cases where old cache had empty PO analysis
-            if (empty($cachedPosHit) && (!empty($activities) || !empty($learnings))) {
-                \Log::info('ChairSummary: Cached PO analysis is empty, regenerating with fallback method');
-                // Fall through to regenerate
-            } else {
-                \Log::info('ChairSummary: Using cached PO analysis for hash: ' . substr($dataHash, 0, 8) . '...');
-                
-                $result = [
-                    'summary' => $cached->summary,
-                    'pos_hit' => $cachedPosHit,
-                    'pos_not_hit' => json_decode($cached->pos_not_hit, true) ?? [],
-                    'poContextHit' => json_decode($cached->po_context_hit, true) ?? [],
-                    'poWordHit' => json_decode($cached->po_word_hit, true) ?? [],
-                    'recommendations' => json_decode($cached->recommendations, true) ?? [],
-                    'activities' => json_decode($cached->activities, true) ?? $activities,
-                    'learnings' => json_decode($cached->learnings, true) ?? $learnings,
-                    'cached' => true,
-                ];
-            }
-        }
-        
-        // Generate new analysis if no cache or cache was invalid
-        if (!isset($result)) {
+            $result = [
+                'summary' => $cached->summary,
+                'pos_hit' => json_decode($cached->pos_hit, true) ?? [],
+                'pos_not_hit' => json_decode($cached->pos_not_hit, true) ?? [],
+                'poContextHit' => json_decode($cached->po_context_hit, true) ?? [],
+                'poWordHit' => json_decode($cached->po_word_hit, true) ?? [],
+                'recommendations' => json_decode($cached->recommendations, true) ?? [],
+                'activities' => json_decode($cached->activities, true) ?? $activities,
+                'learnings' => json_decode($cached->learnings, true) ?? $learnings,
+                'cached' => true,
+            ];
+        } else {
             // No cache found - generate new analysis
             \Log::info('ChairSummary: No cache found, generating new PO analysis');
             
@@ -162,8 +150,18 @@ class ChairSummaryController extends Controller
             // Summary generation is separate from PO analysis
             $result = $adapter->summarize($combined, $week, $useGPT, $activities, $learnings);
             
-            // Save to cache for future use (only if we have activities/learnings)
-            if (!empty($activities) || !empty($learnings)) {
+            // Check if OpenAI was unavailable
+            if (isset($result['openai_unavailable']) && $result['openai_unavailable']) {
+                // Return error response immediately without caching
+                return response()->json($result, 503, [
+                    'Access-Control-Allow-Origin' => '*',
+                    'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
+                    'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
+                ]);
+            }
+            
+            // Save to cache for future use (only if we have activities/learnings and OpenAI succeeded)
+            if ((!empty($activities) || !empty($learnings)) && !isset($result['error'])) {
                 try {
                     DB::table('po_analysis_cache')->insert([
                         'coordinator_id' => $coordinatorId,
