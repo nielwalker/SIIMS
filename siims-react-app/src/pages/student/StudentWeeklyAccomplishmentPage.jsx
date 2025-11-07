@@ -28,6 +28,7 @@ const StudentWeeklyAccomplishmentPage = () => {
   const [searchParams] = useSearchParams();
   const [no_of_hours, setNo_of_hours] = useState(0);
   const [selectedWeek, setSelectedWeek] = useState(""); // For selecting week to export
+  const [filterWeek, setFilterWeek] = useState(""); // For filtering displayed reports
   const [editingReport, setEditingReport] = useState(null); // Track which report is being edited
 
   // Loading State
@@ -42,6 +43,11 @@ const StudentWeeklyAccomplishmentPage = () => {
     return acc;
   }, {});
 
+  // Filter reports based on selected week
+  const filteredReports = filterWeek 
+    ? weeklyReports.filter(report => String(report.week_number) === String(filterWeek))
+    : weeklyReports;
+
   const handleChange = (e) => {
     console.log(e);
 
@@ -50,11 +56,20 @@ const StudentWeeklyAccomplishmentPage = () => {
     
     // Check if the week number has a pending request (not completed)
     if (name === 'week_number') {
-      const weekNum = Number(value);
-      const hasPendingRequest = pendingRequests.some(req => req.week_number === weekNum && !req.completed);
-      if (hasPendingRequest) {
-        setLockedWeek(weekNum);
+      const weekNum = value ? Number(value) : null;
+      if (weekNum && pendingRequests.length > 0) {
+        // Strict check: week_number must match exactly and request must not be completed
+        const hasPendingRequest = pendingRequests.some(req => {
+          const reqWeekNum = Number(req.week_number);
+          return reqWeekNum === weekNum && req.completed === false;
+        });
+        if (hasPendingRequest) {
+          setLockedWeek(weekNum);
+        } else {
+          setLockedWeek(null);
+        }
       } else {
+        // No week number entered or no pending requests, clear locked week
         setLockedWeek(null);
       }
     }
@@ -111,6 +126,9 @@ const StudentWeeklyAccomplishmentPage = () => {
           // Clear lockedWeek immediately after form clear
           setLockedWeek(null);
           
+          // Reset editing state
+          setEditingReport(null);
+          
           // Refresh weekly reports from server to get latest data
           try {
             const reportsResponse = await axiosClient.get(`/api/v1/weekly-accomplishment-reports/${applicationId}`);
@@ -138,12 +156,13 @@ const StudentWeeklyAccomplishmentPage = () => {
                 // Fallback to original path if alias not present
                 await axiosClient.put('/api/v1/weekly-entry-requests/complete', { week_number: Number(completedWeek) });
               }
-              // Refresh pending requests to remove completed one
-              await fetchPendingRequests();
             } catch (err) {
               console.error('Error completing weekly entry request:', err);
             }
           }
+          
+          // Always refresh pending requests after adding a report to ensure accuracy
+          await fetchPendingRequests();
         }
       } else {
         alert("Please complete all fields.");
@@ -168,30 +187,60 @@ const StudentWeeklyAccomplishmentPage = () => {
       }
       if (resp?.data?.data) {
         const requests = Array.isArray(resp.data.data) ? resp.data.data : [];
-        // Filter out completed requests
-        const pendingOnly = requests.filter(req => !req.completed);
+        // Filter out completed requests - use strict check
+        const pendingOnly = requests.filter(req => {
+          // Ensure completed is explicitly false, not just falsy
+          return req.completed === false || req.completed === 0 || req.completed === null;
+        });
         setPendingRequests(pendingOnly);
         
         // Check if there's a request_week query param and if it's in pending requests
         const rq = searchParams.get('request_week');
         if (rq) {
           const weekNum = Number(rq);
-          const hasPendingRequest = pendingOnly.some(req => req.week_number === weekNum && !req.completed);
+          const hasPendingRequest = pendingOnly.some(req => {
+            const reqWeekNum = Number(req.week_number);
+            return reqWeekNum === weekNum && (req.completed === false || req.completed === 0 || req.completed === null);
+          });
           if (hasPendingRequest) {
             setLockedWeek(weekNum);
             setCurrentWeek((prev) => ({ ...prev, week_number: String(rq) }));
+          } else {
+            // If query param exists but no pending request, clear locked week
+            setLockedWeek(null);
+          }
+        } else {
+          // No query param, clear locked week if it was set
+          if (lockedWeek && !pendingOnly.some(req => Number(req.week_number) === lockedWeek)) {
+            setLockedWeek(null);
           }
         }
+      } else {
+        // No data returned, clear pending requests and locked week
+        setPendingRequests([]);
+        setLockedWeek(null);
       }
     } catch (error) {
       console.error('Error fetching pending requests:', error);
       setPendingRequests([]);
+      setLockedWeek(null);
     }
   };
 
   // Pre-fill requested week if provided in query param and it's actually pending
   useEffect(() => {
     fetchPendingRequests();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Refresh pending requests when form is cleared or when adding a new report
+  useEffect(() => {
+    // Refresh pending requests periodically or when needed
+    const interval = setInterval(() => {
+      fetchPendingRequests();
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -203,28 +252,59 @@ const StudentWeeklyAccomplishmentPage = () => {
     setCurrentWeek(reportToEdit);
   };
 
-  const saveEditedReport = () => {
-    const updatedReports = [...weeklyReports];
-    updatedReports[editingReport] = currentWeek;
-    setWeeklyReports(updatedReports);
-    setNo_of_hours(
-      updatedReports.reduce(
-        (sum, report) => sum + parseInt(report.hours, 10),
-        0
-      )
-    );
-    setEditingReport(null);
-    // Clear form completely after saving edit
-    setCurrentWeek({
-      week_number: "",
-      start_date: "",
-      end_date: "",
-      hours: "",
-      tasks: "",
-      learnings: "",
-    });
-    // Clear lockedWeek after editing
-    setLockedWeek(null);
+  const saveEditedReport = async () => {
+    setLoading(true);
+    try {
+      const reportToUpdate = weeklyReports[editingReport];
+      if (!reportToUpdate?.id) {
+        alert("Cannot update report: Missing report ID");
+        setLoading(false);
+        return;
+      }
+
+      const payload = {
+        week_number: Number(currentWeek.week_number),
+        start_date: currentWeek.start_date,
+        end_date: currentWeek.end_date,
+        tasks: currentWeek.tasks,
+        learnings: currentWeek.learnings,
+        no_of_hours: parseInt(currentWeek.hours, 10),
+      };
+
+      const response = await axiosClient.put(
+        `/api/v1/weekly-accomplishment-reports/${reportToUpdate.id}`,
+        payload
+      );
+
+      if (response?.data) {
+        // Refresh weekly reports from server
+        const reportsResponse = await axiosClient.get(`/api/v1/weekly-accomplishment-reports/${applicationId}`);
+        if (reportsResponse?.data?.data) {
+          const reports = Array.isArray(reportsResponse.data.data) ? reportsResponse.data.data : [];
+          setWeeklyReports(reports);
+          const totalHours = reports.reduce((sum, report) => sum + parseInt(report.hours || 0, 10), 0);
+          setNo_of_hours(totalHours);
+        }
+      }
+
+      setEditingReport(null);
+      // Clear form completely after saving edit
+      setCurrentWeek({
+        week_number: "",
+        start_date: "",
+        end_date: "",
+        hours: "",
+        tasks: "",
+        learnings: "",
+      });
+      // Clear lockedWeek after editing
+      setLockedWeek(null);
+    } catch (error) {
+      console.error("Error updating report:", error);
+      alert("Failed to update report. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const deleteReport = (index) => {
@@ -256,13 +336,25 @@ const StudentWeeklyAccomplishmentPage = () => {
     }
   };
 
+  const handleFilterWeekChange = (e) => {
+    const week = e.target.value;
+    setFilterWeek(week);
+  };
+
   const exportToPDF = () => {
     const doc = new jsPDF({ format: "a4" });
 
     const margin = 10;
     const pageWidth = doc.internal.pageSize.width;
 
-    const reportsForWeek = groupedReports[selectedWeek];
+    // Use selectedWeek for export, or filterWeek if selectedWeek is empty
+    const weekToExport = selectedWeek || filterWeek;
+    if (!weekToExport) {
+      alert("Please select a week to export.");
+      return;
+    }
+
+    const reportsForWeek = groupedReports[weekToExport];
     if (!reportsForWeek || reportsForWeek.length === 0) {
       alert("No reports available for the selected week.");
       return;
@@ -372,25 +464,49 @@ const StudentWeeklyAccomplishmentPage = () => {
                   Unit/Office/Department: IT Department
                 </p>
               </div>
-              <div>
-                <select
-                  value={selectedWeek}
-                  onChange={handleWeekSelection}
-                  className="border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 px-4 py-2"
-                >
-                  <option value="">Select Week</option>
-                  {Object.keys(groupedReports).map((week) => (
-                    <option key={week} value={week}>
-                      Week {week}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={exportToPDF}
-                  className="bg-blue-500 text-white px-4 py-2 rounded shadow hover:bg-blue-600 ml-4"
-                >
-                  Export to PDF
-                </button>
+              <div className="flex gap-4 items-center">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Filter by Week
+                  </label>
+                  <select
+                    value={filterWeek}
+                    onChange={handleFilterWeekChange}
+                    className="border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 px-4 py-2"
+                  >
+                    <option value="">All Weeks</option>
+                    {Object.keys(groupedReports).sort((a, b) => Number(a) - Number(b)).map((week) => (
+                      <option key={week} value={week}>
+                        Week {week}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Export Week
+                  </label>
+                  <select
+                    value={selectedWeek}
+                    onChange={handleWeekSelection}
+                    className="border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 px-4 py-2"
+                  >
+                    <option value="">Select Week</option>
+                    {Object.keys(groupedReports).sort((a, b) => Number(a) - Number(b)).map((week) => (
+                      <option key={week} value={week}>
+                        Week {week}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="self-end">
+                  <button
+                    onClick={exportToPDF}
+                    className="bg-blue-500 text-white px-4 py-2 rounded shadow hover:bg-blue-600"
+                  >
+                    Export to PDF
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -406,9 +522,17 @@ const StudentWeeklyAccomplishmentPage = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Week Number {
-                    currentWeek.week_number && 
-                    pendingRequests.some(req => req.week_number === Number(currentWeek.week_number) && !req.completed) ? (
-                      <span className="ml-2 px-2 py-0.5 text-xs rounded bg-amber-200 text-amber-900">Requested</span>
+                    currentWeek.week_number && pendingRequests.length > 0 ? (
+                      (() => {
+                        const weekNum = Number(currentWeek.week_number);
+                        const hasPendingRequest = pendingRequests.some(req => {
+                          const reqWeekNum = Number(req.week_number);
+                          return reqWeekNum === weekNum && (req.completed === false || req.completed === 0 || req.completed === null);
+                        });
+                        return hasPendingRequest ? (
+                          <span className="ml-2 px-2 py-0.5 text-xs rounded bg-amber-200 text-amber-900">Requested</span>
+                        ) : null;
+                      })()
                     ) : null
                   }
                 </label>
@@ -497,7 +621,7 @@ const StudentWeeklyAccomplishmentPage = () => {
           {/* Weekly Reports Table */}
           <div className="bg-white shadow-md rounded-lg p-6 mb-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-4">
-              All Reports
+              {filterWeek ? `Week ${filterWeek} Reports` : "All Reports"}
             </h2>
             <div className="overflow-x-auto">
               <table className="min-w-full bg-white border border-gray-300">
@@ -513,30 +637,46 @@ const StudentWeeklyAccomplishmentPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {weeklyReports.map((report, index) => (
-                    <tr key={index}>
-                      <td className="px-4 py-2">{report.week_number}</td>
-                      <td className="px-4 py-2">{report.start_date}</td>
-                      <td className="px-4 py-2">{report.end_date}</td>
-                      <td className="px-4 py-2">{report.tasks}</td>
-                      <td className="px-4 py-2">{report.learnings}</td>
-                      <td className="px-4 py-2">{report.hours}</td>
-                      <td className="px-4 py-2">
-                        <button
-                          onClick={() => editReport(index)}
-                          className="bg-blue-500 text-white px-3 py-1 rounded shadow hover:bg-blue-600"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => deleteReport(index)}
-                          className="bg-red-500 text-white px-3 py-1 rounded shadow hover:bg-red-600 ml-2"
-                        >
-                          Delete
-                        </button>
+                  {filteredReports.length === 0 ? (
+                    <tr>
+                      <td colSpan="7" className="px-4 py-4 text-center text-gray-500">
+                        {filterWeek ? `No reports found for Week ${filterWeek}` : "No reports available"}
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredReports.map((report, index) => {
+                      // Find the original index in weeklyReports for edit/delete operations
+                      const originalIndex = weeklyReports.findIndex(r => 
+                        r.week_number === report.week_number && 
+                        r.start_date === report.start_date &&
+                        r.end_date === report.end_date
+                      );
+                      return (
+                        <tr key={index}>
+                          <td className="px-4 py-2">{report.week_number}</td>
+                          <td className="px-4 py-2">{report.start_date}</td>
+                          <td className="px-4 py-2">{report.end_date}</td>
+                          <td className="px-4 py-2">{report.tasks}</td>
+                          <td className="px-4 py-2">{report.learnings}</td>
+                          <td className="px-4 py-2">{report.hours}</td>
+                          <td className="px-4 py-2">
+                            <button
+                              onClick={() => editReport(originalIndex >= 0 ? originalIndex : index)}
+                              className="bg-blue-500 text-white px-3 py-1 rounded shadow hover:bg-blue-600"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => deleteReport(originalIndex >= 0 ? originalIndex : index)}
+                              className="bg-red-500 text-white px-3 py-1 rounded shadow hover:bg-red-600 ml-2"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
