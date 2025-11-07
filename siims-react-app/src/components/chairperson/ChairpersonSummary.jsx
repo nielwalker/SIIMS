@@ -10,6 +10,10 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
   const [notHitList, setNotHitList] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [noSectionStudents, setNoSectionStudents] = useState(false);
+  const [wordBasedPercent, setWordBasedPercent] = useState(0);
+  const [contextBasedPercent, setContextBasedPercent] = useState(0);
+  const [wordBasedContributions, setWordBasedContributions] = useState(Array.from({ length: 15 }, () => 0));
+  const [contextBasedContributions, setContextBasedContributions] = useState(Array.from({ length: 15 }, () => 0));
 
   const PO_DESCRIPTIONS = useMemo(() => ([
     "Apply knowledge of computing, science, and mathematics in solving computing/IT-related problems through critical and creative thinking.",
@@ -284,6 +288,19 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           });
         }
         
+        // Calculate weighted contributions for each PO (for nested bar display)
+        const wordContributions = Array.from({ length: 15 }, (_, i) => {
+          const k = keywordScore[i] || 0;
+          // Word-based contribution = 40% of keyword score
+          return Math.round(alpha * k);
+        });
+        
+        const contextContributions = Array.from({ length: 15 }, (_, i) => {
+          const a = aiScores[i] || 0;
+          // Context-based contribution = 60% of AI score (0-1 scale * 100)
+          return Math.round(beta * a * 100);
+        });
+        
         // Build final scores - ONLY for POs confirmed in pos_hit
         let finalScores = Array.from({ length: 15 }, (_, i) => {
           const poCode = `PO${i + 1}`;
@@ -306,6 +323,11 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
         // But only if we have no pos_hit data at all
         if (!hasAnyAIScore && confirmedPOsFromPosHit.size === 0) {
           finalScores = keywordScore.map((k) => Math.round(k));
+          // In fallback mode, contributions are keyword-only
+          for (let i = 0; i < 15; i++) {
+            wordContributions[i] = Math.round(alpha * keywordScore[i]);
+            contextContributions[i] = 0;
+          }
         }
         
         // Final validation: Double-check that graph matches pos_hit exactly
@@ -321,6 +343,9 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
                 const a = aiScores[poIndex] || 0;
                 const hybridScore = (alpha * k) + (beta * a * 100);
                 finalScores[poIndex] = Math.max(50, Math.round(hybridScore));
+                // Update contributions for this PO
+                wordContributions[poIndex] = Math.round(alpha * k);
+                contextContributions[poIndex] = Math.round(beta * a * 100);
               }
             }
           });
@@ -340,9 +365,52 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           finalScores: finalScores
         });
 
+        // Calculate word-based and context-based hit percentages for display
+        const wordBasedPOs = new Set();
+        const contextBasedPOs = new Set();
+        
+        // Collect POs from word-based hits
+        if (Array.isArray(poWordHitFromBackend)) {
+          poWordHitFromBackend.forEach(po => {
+            if (typeof po === 'string' && po.match(/^PO\d+$/)) {
+              wordBasedPOs.add(po);
+            }
+          });
+        }
+        
+        // Collect POs from context-based hits
+        if (Array.isArray(poContextHitFromBackend)) {
+          poContextHitFromBackend.forEach(po => {
+            if (typeof po === 'string' && po.match(/^PO\d+$/)) {
+              contextBasedPOs.add(po);
+            }
+          });
+        }
+        
+        // Calculate percentages based on confirmed POs (pos_hit)
+        const totalConfirmedPOs = confirmedPOsFromPosHit.size;
+        const wordBasedCount = Array.from(confirmedPOsFromPosHit).filter(po => wordBasedPOs.has(po)).length;
+        const contextBasedCount = Array.from(confirmedPOsFromPosHit).filter(po => contextBasedPOs.has(po)).length;
+        
+        const wordBasedPercent = totalConfirmedPOs > 0 ? Math.round((wordBasedCount / totalConfirmedPOs) * 100) : 0;
+        const contextBasedPercent = totalConfirmedPOs > 0 ? Math.round((contextBasedCount / totalConfirmedPOs) * 100) : 0;
+        
         console.log('Total keyword matches:', totalKeywordCount, 'KeywordScore% (unrounded):', keywordScore, 'aiScores(0-1):', aiScores, 'Final%:', finalScores);
+        console.log('PO Analysis Contribution:', {
+          totalConfirmedPOs,
+          wordBasedCount,
+          contextBasedCount,
+          wordBasedPercent: `${wordBasedPercent}%`,
+          contextBasedPercent: `${contextBasedPercent}%`
+        });
         setScores(finalScores);
         console.log('PO Scores computed (hybrid):', finalScores, 'Total entries:', weekEntries.length, 'Students:', filteredStudents.length);
+        
+        // Store contribution percentages for display
+        setWordBasedPercent(wordBasedPercent);
+        setContextBasedPercent(contextBasedPercent);
+        setWordBasedContributions(wordContributions);
+        setContextBasedContributions(contextContributions);
 
         // IMPORTANT: Do NOT create hit/not-hit lists from keyword matching
         // ONLY OpenAI's response (from backend) should determine which POs are achieved
@@ -930,6 +998,10 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
   useEffect(() => {
     // Immediately clear all previous data and show loading
     setLoading(true);
+    setWordBasedPercent(0);
+    setContextBasedPercent(0);
+    setWordBasedContributions(Array.from({ length: 15 }, () => 0));
+    setContextBasedContributions(Array.from({ length: 15 }, () => 0));
     setSummary("");
     setScores(Array.from({ length: 15 }, () => 0));
     setHitList([]);
@@ -1160,6 +1232,15 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
                               const isAchieved = v > 0;
                               const barColor = isAchieved ? 'bg-primary' : 'bg-danger';
                               
+                              // Calculate nested bar contribution (word-based - 40% weight)
+                              const wordContrib = wordBasedContributions[i] || 0;
+                              const contextContrib = contextBasedContributions[i] || 0;
+                              // Show word-based contribution as nested bar (40% weight)
+                              const nestedContrib = wordContrib;
+                              const nestedHeight = v > 0 && nestedContrib > 0 
+                                ? Math.max(2, Math.round((nestedContrib / chartMax) * chartHeight))
+                                : 0;
+                              
                               return (
                                 <div 
                                   key={`${i}-${v}`} 
@@ -1167,8 +1248,8 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
                                   style={{ width: itemWidth, marginRight: i < scores.length - 1 ? itemGap : 0 }}
                                   data-bs-toggle="tooltip" 
                                   data-bs-placement="top" 
-                                  title={`PO${i + 1}: ${v}% - ${isAchieved ? 'Achieved' : 'Not Met'}`}
-                                  data-bs-title={`PO${i + 1}: ${v}% - ${isAchieved ? 'Achieved' : 'Not Met'}`}
+                                  title={`PO${i + 1}: ${v}% (Word: ${wordContrib}%, Context: ${contextContrib}%) - ${isAchieved ? 'Achieved' : 'Not Met'}`}
+                                  data-bs-title={`PO${i + 1}: ${v}% (Word: ${wordContrib}%, Context: ${contextContrib}%) - ${isAchieved ? 'Achieved' : 'Not Met'}`}
                                 >
                                   <div 
                                     className={`w-100 ${barColor} border border-dark rounded-top position-relative`}
@@ -1187,9 +1268,23 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
                                       e.target.style.boxShadow = 'none';
                                     }}
                                   >
+                                    {/* Nested contribution bar (red outlined rectangle) */}
+                                    {v > 0 && nestedContrib > 0 && (
+                                      <div
+                                        className="position-absolute bottom-0 start-0 w-100"
+                                        style={{
+                                          height: `${(nestedHeight / height) * 100}%`,
+                                          border: '2px solid #dc3545',
+                                          backgroundColor: 'rgba(220, 53, 69, 0.2)',
+                                          boxSizing: 'border-box',
+                                          borderRadius: '2px 2px 0 0'
+                                        }}
+                                      />
+                                    )}
+                                    
                                     {/* Percentage label on bar */}
                                     {v > 0 && (
-                                      <div className="position-absolute top-0 start-50 translate-middle-x text-white small fw-bold">
+                                      <div className="position-absolute top-0 start-50 translate-middle-x text-white small fw-bold" style={{ zIndex: 10 }}>
                                         {v}%
                                       </div>
                                     )}
