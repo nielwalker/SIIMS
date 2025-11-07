@@ -429,7 +429,10 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
         const qp = new URLSearchParams();
         if (coordinatorId) qp.set('coordinatorId', coordinatorId);
         if (sectionId) qp.set('sectionId', String(sectionId));
-        if (week) qp.set('week', String(week));
+        // For "overall", don't set week parameter (or set to null/0) so backend returns all weeks
+        if (week && week !== "overall") {
+          qp.set('week', String(week));
+        }
         qp.set('useGPT', '1');
         const resp = await fetch(`${apiBase}/api/v1/summary/chair?${qp.toString()}`, {
           method: 'GET',
@@ -519,122 +522,7 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
             console.log('Loaded AI recommendations from backend:', data.recommendations);
           }
           
-          // Handle "overall" case - summarize returned learnings locally (no POST)
-          if (week === "overall" && data) {
-            console.log('Backend data for overall:', data);
-            
-            // Build a polished paragraph from learnings/activities already returned by backend
-            const toArray = (val) => {
-              if (Array.isArray(val)) return val.filter(Boolean);
-              if (typeof val === 'string') {
-                return val
-                  .replace(/^\[|\]$/g, '')
-                  .split(/"\s*,\s*"|\s*,\s*/)
-                  .map((s) => s.replace(/^"|"$/g, '').trim())
-                  .filter(Boolean);
-              }
-              return [];
-            };
-            let activities = toArray(data.corrected_activities || (data.summary && data.summary.corrected_activities));
-            let learnings = toArray(data.corrected_learnings || (data.summary && data.summary.corrected_learnings));
-
-            // If backend did not provide structured arrays, we'll use the data from the backend response
-            // The backend should have already provided the structured data
-            const assessment = String((data["summary for this section on a week"] || '')).trim();
-            
-            // Send to OpenAI for polished summary
-            try {
-              const openAIData = {
-                corrected_activities: activities,
-                corrected_learnings: learnings,
-                "summary for this section on a week": assessment
-              };
-              
-              console.log('Sending to OpenAI:', openAIData);
-              
-              // Fetch CSRF cookie first
-              try {
-                await fetch(`${apiBase}/sanctum/csrf-cookie`, {
-                  method: 'GET',
-                  credentials: 'include',
-                });
-              } catch (csrfError) {
-                console.log('CSRF cookie fetch failed, continuing anyway:', csrfError);
-              }
-              
-              // Try POST first
-              let openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize`, {
-                method: 'POST',
-                headers: {
-                  ...authHeaders,
-                  'Content-Type': 'application/json',
-                  'X-Requested-With': 'XMLHttpRequest'
-                },
-                credentials: 'include',
-                body: JSON.stringify({
-                  data: openAIData,
-                  type: 'overall_summary'
-                })
-              });
-              
-              // If POST fails with 419, try GET with query params as fallback
-              if (!openAIResponse.ok && openAIResponse.status === 419) {
-                console.log('POST failed with 419, trying GET fallback');
-                const query = encodeURIComponent(JSON.stringify(openAIData));
-                openAIResponse = await fetch(`${apiBase}/api/v1/summary/openai-summarize?data=${query}&type=overall_summary`, {
-                  method: 'GET',
-                  headers: {
-                    ...authHeaders,
-                    'X-Requested-With': 'XMLHttpRequest'
-                  },
-                  credentials: 'include',
-                });
-              }
-              
-              if (openAIResponse.ok) {
-                const openAIResult = await openAIResponse.json();
-                console.log('OpenAI response:', openAIResult);
-                
-                // Check if OpenAI returned an error
-                if (openAIResult.openai_unavailable || openAIResult.error) {
-                  setError('OpenAI is not available right now');
-                  setSummary("");
-                  setLoading(false);
-                  return;
-                }
-                
-                if (openAIResult.summary) {
-                  setSummary(openAIResult.summary);
-                  // CRITICAL: Pass skipHitLists=true to preserve backend hitList data
-                  await computeScores(true);
-                  return;
-                }
-              } else {
-                console.log('OpenAI failed:', openAIResponse.status);
-                const errorData = await openAIResponse.json().catch(() => ({}));
-                if (errorData.openai_unavailable || errorData.error) {
-                  setError('OpenAI is not available right now');
-                  setSummary("");
-                  setLoading(false);
-                  return;
-                }
-              }
-            } catch (error) {
-              console.error('OpenAI error:', error);
-              setError('OpenAI is not available right now');
-              setSummary("");
-              setLoading(false);
-              return;
-            }
-            
-            // If we reach here, OpenAI didn't return a summary and no error was set
-            setError('Unable to generate summary');
-            setSummary("");
-            setLoading(false);
-            return;
-          }
-          
-          // Extract POS hit/not-hit arrays from backend for consistent display
+          // Extract POS hit/not-hit arrays from backend for consistent display (BEFORE handling overall case)
           // First, try pos_hit array
           let hits = [];
           console.log('Raw backend data.pos_hit:', data?.pos_hit);
