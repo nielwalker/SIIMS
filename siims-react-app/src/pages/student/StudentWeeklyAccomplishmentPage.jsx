@@ -63,11 +63,11 @@ const StudentWeeklyAccomplishmentPage = () => {
     if (name === 'week_number') {
       const weekNum = value ? Number(value) : null;
       if (weekNum && pendingRequests && pendingRequests.length > 0) {
-        // Strict check: week_number must match exactly and request must not be completed
+        // Check if week_number matches exactly and request is pending (completed_at is null)
         const hasPendingRequest = pendingRequests.some(req => {
-          if (!req || req.completed === true || req.completed === 1) {
-            return false;
-          }
+          if (!req) return false;
+          // Backend already filters completed requests, but double-check completed_at is null
+          if (req.completed_at && req.completed_at !== null) return false;
           const reqWeekNum = Number(req.week_number);
           return !isNaN(reqWeekNum) && reqWeekNum === weekNum;
         });
@@ -175,15 +175,17 @@ const StudentWeeklyAccomplishmentPage = () => {
             setNo_of_hours((prevNoOfHours) => prevNoOfHours + parsedHours);
           }
           
-          // If we came from a coordinator request, mark it completed
-          if (completedWeek) {
+          // Mark the request as completed if there was a pending request for this week
+          // Use the week number from the payload (weekNum) instead of just completedWeek
+          const weekToComplete = completedWeek || weekNum;
+          if (weekToComplete) {
             try {
               await axiosClient.get('/sanctum/csrf-cookie', { withCredentials: true });
               try {
-                await axiosClient.put('/api/v1/student/weekly-entry-requests/complete', { week_number: Number(completedWeek) });
+                await axiosClient.put('/api/v1/student/weekly-entry-requests/complete', { week_number: Number(weekToComplete) });
               } catch (err) {
                 // Fallback to original path if alias not present
-                await axiosClient.put('/api/v1/weekly-entry-requests/complete', { week_number: Number(completedWeek) });
+                await axiosClient.put('/api/v1/weekly-entry-requests/complete', { week_number: Number(weekToComplete) });
               }
             } catch (err) {
               console.error('Error completing weekly entry request:', err);
@@ -215,15 +217,17 @@ const StudentWeeklyAccomplishmentPage = () => {
         resp = await axiosClient.get('/api/v1/weekly-entry-requests/student');
       }
       if (resp?.data?.data) {
+        // Backend already filters out completed requests (where completed_at is not null)
+        // So we can trust the response and use all requests returned
         const requests = Array.isArray(resp.data.data) ? resp.data.data : [];
-        // Filter out completed requests - use very strict check
+        // Filter out any invalid requests
         const pendingOnly = requests.filter(req => {
           if (!req) return false;
-          // Only include if completed is explicitly false, 0, or null/undefined
-          // Exclude if completed is true or 1
-          return req.completed === false || req.completed === 0 || req.completed === null || req.completed === undefined;
+          // Backend returns only pending requests (completed_at is null), so we trust it
+          // But also check if completed_at exists and is null (just to be safe)
+          return !req.completed_at || req.completed_at === null;
         });
-        console.log('Pending requests after filter:', pendingOnly);
+        console.log('Pending requests from backend:', pendingOnly);
         setPendingRequests(pendingOnly);
         
         // Check if there's a request_week query param and if it's in pending requests
@@ -232,7 +236,7 @@ const StudentWeeklyAccomplishmentPage = () => {
           const weekNum = Number(rq);
           const hasPendingRequest = pendingOnly.some(req => {
             const reqWeekNum = Number(req.week_number);
-            return reqWeekNum === weekNum && (req.completed === false || req.completed === 0 || req.completed === null);
+            return reqWeekNum === weekNum;
           });
           if (hasPendingRequest) {
             setLockedWeek(weekNum);
@@ -583,13 +587,12 @@ const StudentWeeklyAccomplishmentPage = () => {
                       if (isNaN(weekNum)) {
                         return null;
                       }
-                      // Very strict check: must have exact match and not completed
+                      // Check if week number matches a pending request
+                      // Backend already filters completed requests, so we just need to match week_number
                       const hasPendingRequest = pendingRequests.some(req => {
                         if (!req) return false;
-                        // Skip if completed is explicitly true or 1
-                        if (req.completed === true || req.completed === 1) {
-                          return false;
-                        }
+                        // Backend already filters completed requests, but double-check completed_at is null
+                        if (req.completed_at && req.completed_at !== null) return false;
                         const reqWeekNum = Number(req.week_number);
                         return !isNaN(reqWeekNum) && reqWeekNum === weekNum;
                       });

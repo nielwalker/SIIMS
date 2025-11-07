@@ -121,10 +121,15 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
         resp = await axiosClient.get('/api/v1/weekly-entry-requests/student');
       }
       if (resp?.data?.data) {
+        // Backend already filters out completed requests (where completed_at is not null)
+        // So we can trust the response and use all requests returned
         const requests = Array.isArray(resp.data.data) ? resp.data.data : [];
+        // Filter out any invalid requests
         const pendingOnly = requests.filter(req => {
           if (!req) return false;
-          return req.completed === false || req.completed === 0 || req.completed === null || req.completed === undefined;
+          // Backend returns only pending requests (completed_at is null), so we trust it
+          // But also check if completed_at exists and is null (just to be safe)
+          return !req.completed_at || req.completed_at === null;
         });
         setPendingRequests(pendingOnly);
       } else {
@@ -282,13 +287,15 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
     resetForm();
     setLockedWeek(null);
     // If this entry fulfills a coordinator request, mark it complete
+    // Use the week number from formData if completedWeek is not set
+    const weekToComplete = completedWeek || (formData.week_number ? Number(formData.week_number) : null);
     try {
-      if (completedWeek) {
+      if (weekToComplete) {
         await axiosClient.get('/sanctum/csrf-cookie', { withCredentials: true });
         try {
-          await axiosClient.put('/api/v1/student/weekly-entry-requests/complete', { week_number: Number(completedWeek) });
+          await axiosClient.put('/api/v1/student/weekly-entry-requests/complete', { week_number: Number(weekToComplete) });
         } catch (err) {
-          await axiosClient.put('/api/v1/weekly-entry-requests/complete', { week_number: Number(completedWeek) });
+          await axiosClient.put('/api/v1/weekly-entry-requests/complete', { week_number: Number(weekToComplete) });
         }
       }
     } catch (_) {}

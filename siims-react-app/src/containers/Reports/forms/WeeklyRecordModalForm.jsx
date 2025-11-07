@@ -23,7 +23,8 @@ const WeeklyRecordModalForm = ({
         if (isNaN(weekNum)) return false;
         return pendingRequests.some(req => {
           if (!req) return false;
-          if (req.completed === true || req.completed === 1) return false;
+          // Backend already filters completed requests, but double-check completed_at is null
+          if (req.completed_at && req.completed_at !== null) return false;
           const reqWeekNum = Number(req.week_number);
           return !isNaN(reqWeekNum) && reqWeekNum === weekNum;
         });
