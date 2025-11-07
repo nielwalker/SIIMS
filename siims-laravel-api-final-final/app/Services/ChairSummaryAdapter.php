@@ -606,7 +606,6 @@ CONTEXTUAL INTERPRETATION METHODOLOGY:',
                 }
             } catch (\Throwable $e) {
                 \Log::error('OpenAI API Error:', ['message' => $e->getMessage()]);
-                // fallback to cleaned text summary
             }
         }
 
@@ -731,59 +730,6 @@ CONTEXTUAL INTERPRETATION METHODOLOGY:',
         }
         
         return $result;
-    }
-    
-    /**
-     * Fallback PO analysis directly from activities and learnings
-     * This ensures POs are identified even if OpenAI fails
-     */
-    private function analyzePosFromActivities(array $activities, array $learnings): array
-    {
-        $posHit = [];
-        $combinedText = strtolower(implode(' ', $activities) . ' ' . implode(' ', $learnings));
-        
-        // PO Mapping based on keywords and context
-        $poPatterns = [
-            'PO5' => ['participated', 'orientation', 'team', 'colleague', 'together', 'group', 'collaborat', 'meeting', 'discussed with'],
-            'PO6' => ['discussed', 'discussion', 'communicat', 'talked', 'presented', 'explained', 'reported', 'documented', 'wrote', 'report'],
-            'PO8' => ['rule', 'policy', 'procedure', 'followed', 'adhered', 'professional', 'standard', 'guideline', 'house rules'],
-            'PO10' => ['learned about', 'understood', 'requirements', 'needs', 'user', 'system', 'project', 'objective', 'vims', 'ibpls'],
-            'PO13' => ['learned', 'learned about', 'gained', 'insight', 'understanding', 'knowledge', 'study', 'researched'],
-            'PO4' => ['used', 'worked with', 'tool', 'software', 'system', 'application', 'technology', 'framework', 'platform'],
-            'PO3' => ['created', 'built', 'developed', 'implemented', 'designed', 'constructed', 'made', 'programmed'],
-            'PO1' => ['calculate', 'computed', 'solved', 'formula', 'algorithm', 'math', 'mathematical'],
-            'PO2' => ['analyzed', 'troubleshoot', 'debug', 'fixed', 'problem', 'issue', 'error', 'solved'],
-            'PO12' => ['tested', 'testing', 'checked', 'verified', 'validated', 'quality'],
-            'PO9' => ['team', 'group', 'collaborat', 'together', 'shared', 'coordinate'],
-            'PO7' => ['impact', 'affect', 'benefit', 'user', 'organization', 'society'],
-            'PO11' => ['integrated', 'integrate', 'combined', 'connected', 'linked'],
-            'PO14' => ['contributed', 'contribute', 'developed', 'built', 'created'],
-            'PO15' => ['filipino', 'culture', 'heritage', 'local', 'tagalog']
-        ];
-        
-        foreach ($poPatterns as $poCode => $patterns) {
-            foreach ($patterns as $pattern) {
-                if (stripos($combinedText, $pattern) !== false) {
-                    // Check if already added
-                    $exists = false;
-                    foreach ($posHit as $existing) {
-                        if (($existing['po'] ?? '') === $poCode) {
-                            $exists = true;
-                            break;
-                        }
-                    }
-                    if (!$exists) {
-                        $posHit[] = [
-                            'po' => $poCode,
-                            'reason' => 'Evidence found in activities and learnings through keyword and contextual analysis'
-                        ];
-                        break; // Found one match for this PO, move to next PO
-                    }
-                }
-            }
-        }
-        
-        return $posHit;
     }
 }
 

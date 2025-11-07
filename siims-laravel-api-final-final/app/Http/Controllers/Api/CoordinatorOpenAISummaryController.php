@@ -154,12 +154,13 @@ class CoordinatorOpenAISummaryController extends Controller
                 return response()->json(['summary' => $clean, 'success' => true]);
             }
 
-            // Fallback paragraph
-            $summary = $this->generateFallbackSummary($activities, $learnings, $assessment);
-            if (!preg_match('/^For\s+this\s+week,\s+the\s+student/i', $summary)) {
-                $summary = 'For this week, the student ' . ltrim($summary);
-            }
-            return response()->json(['summary' => $summary, 'success' => true, 'fallback' => true]);
+            // OpenAI not available - return error
+            Log::warning('OpenAI failed for coordinator summary', ['error' => $response['error'] ?? 'Unknown error']);
+            return response()->json([
+                'error' => 'OpenAI is not available right now',
+                'message' => $response['error'] ?? 'Unable to generate summary',
+                'openai_unavailable' => true
+            ], 503);
 
         } catch (\Throwable $e) {
             Log::error('Coordinator OpenAI Summarization Error', ['error' => $e->getMessage()]);
@@ -171,23 +172,6 @@ class CoordinatorOpenAISummaryController extends Controller
     private function callCoordinatorOpenAI($prompt)
     {
         return $this->callOpenAI($prompt, 'gpt-3.5-turbo', 300, 0.6, 30);
-    }
-
-    private function generateFallbackSummary($activities, $learnings, $assessment)
-    {
-        $activitiesText = is_array($activities) ? implode(', ', $activities) : $activities;
-        $learningsText = is_array($learnings) ? implode(', ', $learnings) : $learnings;
-        $summary = '';
-        if ($activitiesText) {
-            $summary .= "completed activities such as {$activitiesText}. ";
-        }
-        if ($learningsText) {
-            $summary .= "They demonstrated learning in {$learningsText}. ";
-        }
-        if ($assessment) {
-            $summary .= $assessment;
-        }
-        return trim(preg_replace('/\s+/', ' ', $summary));
     }
 
 }

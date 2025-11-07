@@ -110,9 +110,16 @@ class SummaryAdapter
                         }
                         $usedGPT = true;
                     }
+                } else {
+                    // OpenAI request failed - log but don't use fallback
+                    \Log::warning('OpenAI API request failed in SummaryAdapter', [
+                        'status' => $resp->status() ?? 'unknown',
+                        'error' => $resp->json()['error'] ?? 'Unknown error'
+                    ]);
                 }
             } catch (\Throwable $e) {
-                // silent fallback to keyword summary
+                // Log error but don't use fallback - return error state
+                \Log::error('OpenAI API Error in SummaryAdapter:', ['message' => $e->getMessage()]);
             }
         }
 

@@ -474,40 +474,7 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
             // The backend should have already provided the structured data
             const assessment = String((data["summary for this section on a week"] || '')).trim();
             
-            const buildParagraph = (acts, lerns, assess) => {
-              // Clean HTML tags and normalize text
-              const cleanText = (text) => {
-                if (!text) return '';
-                return String(text)
-                  .replace(/<[^>]*>/g, '') // Remove HTML tags
-                  .replace(/&nbsp;/g, ' ') // Replace &nbsp; with space
-                  .replace(/&amp;/g, '&') // Replace &amp; with &
-                  .replace(/&lt;/g, '<') // Replace &lt; with <
-                  .replace(/&gt;/g, '>') // Replace &gt; with >
-                  .replace(/\s+/g, ' ') // Normalize whitespace
-                  .trim();
-              };
-
-              // Clean and filter the arrays
-              const cleanActs = acts.map(cleanText).filter(Boolean);
-              const cleanLerns = lerns.map(cleanText).filter(Boolean);
-              const cleanAssess = cleanText(assess);
-
-              let p = 'For overall, ';
-              if (cleanActs.length) {
-                p += `students engaged in activities including ${cleanActs.join(', ')}. `;
-              }
-              if (cleanLerns.length) {
-                p += `Through these experiences, they demonstrated learning and skill development in ${cleanLerns.join(', ')}. `;
-              }
-              if (cleanAssess) {
-                p += cleanAssess;
-              }
-              p = p.replace(/\s+/g, ' ').trim();
-              if (!/[.!?]$/.test(p)) p += '.';
-              return p;
-            };
-              // Send to OpenAI for polished summary
+            // Send to OpenAI for polished summary
             try {
               const openAIData = {
                 corrected_activities: activities,
@@ -560,6 +527,14 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
                 const openAIResult = await openAIResponse.json();
                 console.log('OpenAI response:', openAIResult);
                 
+                // Check if OpenAI returned an error
+                if (openAIResult.openai_unavailable || openAIResult.error) {
+                  setError('OpenAI is not available right now');
+                  setSummary("");
+                  setLoading(false);
+                  return;
+                }
+                
                 if (openAIResult.summary) {
                   setSummary(openAIResult.summary);
                   // CRITICAL: Pass skipHitLists=true to preserve backend hitList data
@@ -568,17 +543,26 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
                 }
               } else {
                 console.log('OpenAI failed:', openAIResponse.status);
+                const errorData = await openAIResponse.json().catch(() => ({}));
+                if (errorData.openai_unavailable || errorData.error) {
+                  setError('OpenAI is not available right now');
+                  setSummary("");
+                  setLoading(false);
+                  return;
+                }
               }
             } catch (error) {
               console.error('OpenAI error:', error);
+              setError('OpenAI is not available right now');
+              setSummary("");
+              setLoading(false);
+              return;
             }
             
-            // Fallback to local paragraph if OpenAI fails
-            const paragraph = buildParagraph(activities, learnings, assessment);
-            console.log('Overall paragraph (local):', paragraph);
-            setSummary(paragraph);
-            // CRITICAL: Pass skipHitLists=true to preserve backend hitList data
-            await computeScores(true);
+            // If we reach here, OpenAI didn't return a summary and no error was set
+            setError('Unable to generate summary');
+            setSummary("");
+            setLoading(false);
             return;
           }
           
