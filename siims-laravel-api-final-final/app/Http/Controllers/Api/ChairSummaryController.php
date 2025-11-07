@@ -106,20 +106,32 @@ class ChairSummaryController extends Controller
         
         if ($cached) {
             // Use cached results - consistent across refreshes
-            \Log::info('ChairSummary: Using cached PO analysis for hash: ' . substr($dataHash, 0, 8) . '...');
+            $cachedPosHit = json_decode($cached->pos_hit, true) ?? [];
             
-            $result = [
-                'summary' => $cached->summary,
-                'pos_hit' => json_decode($cached->pos_hit, true) ?? [],
-                'pos_not_hit' => json_decode($cached->pos_not_hit, true) ?? [],
-                'poContextHit' => json_decode($cached->po_context_hit, true) ?? [],
-                'poWordHit' => json_decode($cached->po_word_hit, true) ?? [],
-                'recommendations' => json_decode($cached->recommendations, true) ?? [],
-                'activities' => json_decode($cached->activities, true) ?? $activities,
-                'learnings' => json_decode($cached->learnings, true) ?? $learnings,
-                'cached' => true,
-            ];
-        } else {
+            // If cached data has empty pos_hit but we have activities/learnings, regenerate
+            // This fixes cases where old cache had empty PO analysis
+            if (empty($cachedPosHit) && (!empty($activities) || !empty($learnings))) {
+                \Log::info('ChairSummary: Cached PO analysis is empty, regenerating with fallback method');
+                // Fall through to regenerate
+            } else {
+                \Log::info('ChairSummary: Using cached PO analysis for hash: ' . substr($dataHash, 0, 8) . '...');
+                
+                $result = [
+                    'summary' => $cached->summary,
+                    'pos_hit' => $cachedPosHit,
+                    'pos_not_hit' => json_decode($cached->pos_not_hit, true) ?? [],
+                    'poContextHit' => json_decode($cached->po_context_hit, true) ?? [],
+                    'poWordHit' => json_decode($cached->po_word_hit, true) ?? [],
+                    'recommendations' => json_decode($cached->recommendations, true) ?? [],
+                    'activities' => json_decode($cached->activities, true) ?? $activities,
+                    'learnings' => json_decode($cached->learnings, true) ?? $learnings,
+                    'cached' => true,
+                ];
+            }
+        }
+        
+        // Generate new analysis if no cache or cache was invalid
+        if (!isset($result)) {
             // No cache found - generate new analysis
             \Log::info('ChairSummary: No cache found, generating new PO analysis');
             
