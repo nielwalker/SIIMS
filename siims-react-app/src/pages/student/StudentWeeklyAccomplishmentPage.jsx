@@ -48,6 +48,11 @@ const StudentWeeklyAccomplishmentPage = () => {
     ? weeklyReports.filter(report => String(report.week_number) === String(filterWeek))
     : weeklyReports;
 
+  // Generate available weeks (1-13 for internship, or based on existing reports)
+  const existingWeeks = Object.keys(groupedReports).map(w => Number(w)).filter(w => !isNaN(w));
+  const maxWeek = existingWeeks.length > 0 ? Math.max(...existingWeeks, 13) : 13;
+  const availableWeeks = Array.from({ length: maxWeek }, (_, i) => i + 1);
+
   const handleChange = (e) => {
     console.log(e);
 
@@ -57,11 +62,14 @@ const StudentWeeklyAccomplishmentPage = () => {
     // Check if the week number has a pending request (not completed)
     if (name === 'week_number') {
       const weekNum = value ? Number(value) : null;
-      if (weekNum && pendingRequests.length > 0) {
+      if (weekNum && pendingRequests && pendingRequests.length > 0) {
         // Strict check: week_number must match exactly and request must not be completed
         const hasPendingRequest = pendingRequests.some(req => {
+          if (!req || req.completed === true || req.completed === 1) {
+            return false;
+          }
           const reqWeekNum = Number(req.week_number);
-          return reqWeekNum === weekNum && req.completed === false;
+          return !isNaN(reqWeekNum) && reqWeekNum === weekNum;
         });
         if (hasPendingRequest) {
           setLockedWeek(weekNum);
@@ -187,11 +195,14 @@ const StudentWeeklyAccomplishmentPage = () => {
       }
       if (resp?.data?.data) {
         const requests = Array.isArray(resp.data.data) ? resp.data.data : [];
-        // Filter out completed requests - use strict check
+        // Filter out completed requests - use very strict check
         const pendingOnly = requests.filter(req => {
-          // Ensure completed is explicitly false, not just falsy
-          return req.completed === false || req.completed === 0 || req.completed === null;
+          if (!req) return false;
+          // Only include if completed is explicitly false, 0, or null/undefined
+          // Exclude if completed is true or 1
+          return req.completed === false || req.completed === 0 || req.completed === null || req.completed === undefined;
         });
+        console.log('Pending requests after filter:', pendingOnly);
         setPendingRequests(pendingOnly);
         
         // Check if there's a request_week query param and if it's in pending requests
@@ -522,29 +533,44 @@ const StudentWeeklyAccomplishmentPage = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700">
                   Week Number {
-                    currentWeek.week_number && pendingRequests.length > 0 ? (
-                      (() => {
-                        const weekNum = Number(currentWeek.week_number);
-                        const hasPendingRequest = pendingRequests.some(req => {
-                          const reqWeekNum = Number(req.week_number);
-                          return reqWeekNum === weekNum && (req.completed === false || req.completed === 0 || req.completed === null);
-                        });
-                        return hasPendingRequest ? (
-                          <span className="ml-2 px-2 py-0.5 text-xs rounded bg-amber-200 text-amber-900">Requested</span>
-                        ) : null;
-                      })()
-                    ) : null
+                    (() => {
+                      if (!currentWeek.week_number || !pendingRequests || pendingRequests.length === 0) {
+                        return null;
+                      }
+                      const weekNum = Number(currentWeek.week_number);
+                      if (isNaN(weekNum)) {
+                        return null;
+                      }
+                      // Very strict check: must have exact match and not completed
+                      const hasPendingRequest = pendingRequests.some(req => {
+                        if (!req) return false;
+                        // Skip if completed is explicitly true or 1
+                        if (req.completed === true || req.completed === 1) {
+                          return false;
+                        }
+                        const reqWeekNum = Number(req.week_number);
+                        return !isNaN(reqWeekNum) && reqWeekNum === weekNum;
+                      });
+                      return hasPendingRequest ? (
+                        <span className="ml-2 px-2 py-0.5 text-xs rounded bg-amber-200 text-amber-900">Requested</span>
+                      ) : null;
+                    })()
                   }
                 </label>
-                <input
-                  type="number"
+                <select
                   name="week_number"
                   value={currentWeek.week_number}
                   onChange={handleChange}
-                  placeholder="e.g., 1"
-                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm"
+                  className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500"
                   disabled={!!lockedWeek && Number(currentWeek.week_number) === lockedWeek}
-                />
+                >
+                  <option value="">Select Week</option>
+                  {availableWeeks.map((week) => (
+                    <option key={week} value={week}>
+                      Week {week}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">

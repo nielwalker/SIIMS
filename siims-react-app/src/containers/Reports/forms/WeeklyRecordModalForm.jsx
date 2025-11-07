@@ -14,7 +14,21 @@ const WeeklyRecordModalForm = ({
   onSubmit,
   validationErrors = {},
   lockedWeek = null,
+  pendingRequests = [],
 }) => {
+  // Check if current week number has a pending request
+  const hasPendingRequest = formData.week_number && pendingRequests && pendingRequests.length > 0
+    ? (() => {
+        const weekNum = Number(formData.week_number);
+        if (isNaN(weekNum)) return false;
+        return pendingRequests.some(req => {
+          if (!req) return false;
+          if (req.completed === true || req.completed === 1) return false;
+          const reqWeekNum = Number(req.week_number);
+          return !isNaN(reqWeekNum) && reqWeekNum === weekNum;
+        });
+      })()
+    : false;
   return (
     <Modal
       isOpen={isOpen}
@@ -29,20 +43,23 @@ const WeeklyRecordModalForm = ({
               htmlFor="week_number"
               className="block mb-2 text-sm font-bold text-gray-900 dark:text-black"
             >
-              Week Number {lockedWeek && (
-                <span className="ml-2 px-2 py-1 bg-blue-200 text-blue-800 text-xs rounded-full">Requested</span>
-              )} <span className="text-red-500 text-lg">*</span>
+              Week Number {
+                hasPendingRequest && (
+                  <span className="ml-2 px-2 py-1 bg-amber-200 text-amber-900 text-xs rounded-full">Requested</span>
+                )
+              } <span className="text-red-500 text-lg">*</span>
             </Label>
             <Input
               type="number"
               id="week_number"
               name="week_number"
-              value={formData.week_number}
+              value={formData.week_number || ""}
               onChange={handleInputChange}
-              disabled={!!lockedWeek}
+              disabled={!!lockedWeek && Number(formData.week_number) === lockedWeek}
               className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block w-full p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:placeholder-gray-400 dark:text-white dark:focus:ring-blue-500 dark:focus:border-blue-500"
-              placeholder="1"
+              placeholder="e.g., 1"
               required
+              min="1"
             />
           </Field>
           {validationErrors.week_number && (

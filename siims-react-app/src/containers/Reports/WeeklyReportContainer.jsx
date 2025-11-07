@@ -58,6 +58,8 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
   // Request week (from coordinator request)
   const [searchParams] = useSearchParams();
   const [lockedWeek, setLockedWeek] = useState(null);
+  const [filterWeek, setFilterWeek] = useState(""); // For filtering displayed reports and PDF export
+  const [pendingRequests, setPendingRequests] = useState([]); // Track pending requests
 
   /**
    *
@@ -99,6 +101,7 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
   useEffect(() => {
     getWeeklyRecords();
     fetchIdentity();
+    fetchPendingRequests();
     const rq = searchParams.get("request_week");
     if (rq) {
       setLockedWeek(Number(rq));
@@ -106,6 +109,32 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
       setIsAddOpen(true);
     }
   }, []);
+
+  // Fetch pending requests
+  const fetchPendingRequests = async () => {
+    try {
+      await axiosClient.get('/sanctum/csrf-cookie', { withCredentials: true });
+      let resp;
+      try {
+        resp = await axiosClient.get('/api/v1/student/weekly-entry-requests');
+      } catch (err) {
+        resp = await axiosClient.get('/api/v1/weekly-entry-requests/student');
+      }
+      if (resp?.data?.data) {
+        const requests = Array.isArray(resp.data.data) ? resp.data.data : [];
+        const pendingOnly = requests.filter(req => {
+          if (!req) return false;
+          return req.completed === false || req.completed === 0 || req.completed === null || req.completed === undefined;
+        });
+        setPendingRequests(pendingOnly);
+      } else {
+        setPendingRequests([]);
+      }
+    } catch (error) {
+      console.error('Error fetching pending requests:', error);
+      setPendingRequests([]);
+    }
+  };
 
   /**
    *
@@ -222,6 +251,7 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
     e.preventDefault();
 
     // console.log(formData);
+    const completedWeek = lockedWeek; // Store before clearing
     await addWar({
       authorizeRole: authorizeRole,
       setLoading: setLoading,
@@ -230,18 +260,22 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
       setIsOpen: setIsAddOpen,
       setRows: setRows,
     });
+    // Clear form after successful submission
+    resetForm();
+    setLockedWeek(null);
     // If this entry fulfills a coordinator request, mark it complete
     try {
-      if (lockedWeek) {
+      if (completedWeek) {
         await axiosClient.get('/sanctum/csrf-cookie', { withCredentials: true });
         try {
-          await axiosClient.put('/api/v1/student/weekly-entry-requests/complete', { week_number: Number(lockedWeek) });
+          await axiosClient.put('/api/v1/student/weekly-entry-requests/complete', { week_number: Number(completedWeek) });
         } catch (err) {
-          await axiosClient.put('/api/v1/weekly-entry-requests/complete', { week_number: Number(lockedWeek) });
+          await axiosClient.put('/api/v1/weekly-entry-requests/complete', { week_number: Number(completedWeek) });
         }
-        setLockedWeek(null);
       }
     } catch (_) {}
+    // Refresh pending requests
+    await fetchPendingRequests();
   };
 
   const updateWeeklyTimeRecord = async (e) => {
@@ -294,10 +328,35 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
     setIsEditOpen(true);
   };
 
+  // Clear form when modal closes
+  useEffect(() => {
+    if (!isAddOpen && !isEditOpen) {
+      resetForm();
+      setLockedWeek(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAddOpen, isEditOpen]);
+
+  // Filter rows based on selected week
+  const filteredRows = filterWeek 
+    ? rows.filter(row => String(row.week_number) === String(filterWeek))
+    : rows;
+
+  // Group rows by week for PDF export
+  const groupedByWeek = rows.reduce((acc, row) => {
+    const week = String(row.week_number);
+    if (!acc[week]) {
+      acc[week] = [];
+    }
+    acc[week].push(row);
+    return acc;
+  }, {});
+
   return (
     <WeeklyReportPresenter
       loading={loading}
-      rows={rows}
+      rows={filteredRows}
+      allRows={rows}
       header={headerInfo}
       /** Form Props */
       formData={formData}
@@ -306,6 +365,7 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
       isAddOpen={isAddOpen}
       setIsAddOpen={setIsAddOpen}
       addWeeklyTimeRecord={addWeeklyTimeRecord}
+      pendingRequests={pendingRequests}
       /** Task View Props */
       selectedTask={selectedTask}
       openTaskViewModal={openTaskViewModal}
@@ -325,6 +385,12 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
       deleteWeeklyTimeRecord={deleteWeeklyTimeRecord}
       /** Validation Error Props */
       validationErrors={errors}
+      /** Filter props */
+      filterWeek={filterWeek}
+      setFilterWeek={setFilterWeek}
+      groupedByWeek={groupedByWeek}
+      pendingRequests={pendingRequests}
+      lockedWeek={lockedWeek}
     />
   );
 };

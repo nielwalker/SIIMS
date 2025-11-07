@@ -14,6 +14,7 @@ import GenerateWeeklyAccomplishmentReport from "../../components/letters/Generat
 const WeeklyReportPresenter = ({
   loading,
   rows = [],
+  allRows = [],
   header = {},
 
   // viewWeeklyRecordPDF = () => {},
@@ -50,10 +51,27 @@ const WeeklyReportPresenter = ({
 
   /** Delete Props */
   deleteWeeklyTimeRecord,
+
+  /** Filter props */
+  filterWeek = "",
+  setFilterWeek = () => {},
+  groupedByWeek = {},
+  pendingRequests = [],
+  lockedWeek = null,
 }) => {
+  // Determine which rows to use for PDF (filtered by selected week or all)
+  const rowsForPDF = filterWeek && groupedByWeek[filterWeek] 
+    ? groupedByWeek[filterWeek] 
+    : allRows;
+  
   const documentNode = (
-    <GenerateWeeklyAccomplishmentReport weeklyEntries={rows} header={header} />
+    <GenerateWeeklyAccomplishmentReport weeklyEntries={rowsForPDF} header={header} />
   );
+
+  // Generate available weeks from all rows - only weeks that have data
+  const existingWeeks = allRows && allRows.length > 0
+    ? [...new Set(allRows.map(r => Number(r.week_number)).filter(w => !isNaN(w)))].sort((a, b) => a - b)
+    : [];
 
   return (
     <div>
@@ -68,7 +86,8 @@ const WeeklyReportPresenter = ({
         setIsOpen={setIsAddOpen}
         onSubmit={addWeeklyTimeRecord}
         validationErrors={validationErrors}
-        lockedWeek={formData?.week_number || null}
+        lockedWeek={lockedWeek}
+        pendingRequests={pendingRequests}
       />
 
       {/* Update Form Modal */}
@@ -121,22 +140,41 @@ const WeeklyReportPresenter = ({
 
       <div className="mx-auto py-6 bg-white rounded-lg mt-8">
         <h2 className="text-2xl font-bold text-gray-800 mb-4">
-          Weekly Accomplishment
+          Weekly Accomplishment {filterWeek ? `- Week ${filterWeek}` : ''}
         </h2>
 
         <div className="flex items-center justify-between my-3">
-        <div className="flex items-center space-x-2">
-          <PDFDownloadLink document={documentNode} fileName="weekly-accomplishment-report.pdf">
-            {({ loading }) => (
-              <Button
-                type="button"
-                className={`text-sm flex items-center justify-center gap-2 px-3 py-2 ${loading ? 'bg-gray-500 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'} text-white rounded`}
+          <div className="flex items-center space-x-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Filter by Week
+              </label>
+              <select
+                value={filterWeek}
+                onChange={(e) => setFilterWeek(e.target.value)}
+                className="border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 px-3 py-2 text-sm"
               >
-                {loading ? 'Preparing PDF…' : 'Download PDF'}
-              </Button>
-            )}
-          </PDFDownloadLink>
-        </div>
+                <option value="">All Weeks</option>
+                {existingWeeks.map((week) => (
+                  <option key={week} value={week}>
+                    Week {week}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="self-end">
+              <PDFDownloadLink document={documentNode} fileName={`weekly-accomplishment-report${filterWeek ? `-week-${filterWeek}` : ''}.pdf`}>
+                {({ loading }) => (
+                  <Button
+                    type="button"
+                    className={`text-sm flex items-center justify-center gap-2 px-3 py-2 ${loading ? 'bg-gray-500 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'} text-white rounded`}
+                  >
+                    {loading ? 'Preparing PDF…' : 'Download PDF'}
+                  </Button>
+                )}
+              </PDFDownloadLink>
+            </div>
+          </div>
 
           <Button
             onClick={() => setIsAddOpen(!isAddOpen)}
@@ -225,8 +263,8 @@ const WeeklyReportPresenter = ({
               ) : (
                 <>
                   <tr>
-                    <td colSpan="6" className="py-4 text-center text-gray-500">
-                      No records found
+                    <td colSpan="8" className="py-4 text-center text-gray-500">
+                      {filterWeek ? `No records found for Week ${filterWeek}` : "No records found"}
                     </td>
                   </tr>
                 </>
