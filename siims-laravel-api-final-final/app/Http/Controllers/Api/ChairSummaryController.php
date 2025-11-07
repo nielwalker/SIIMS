@@ -198,7 +198,7 @@ class ChairSummaryController extends Controller
         // Activities and learnings are already extracted and stored in result by adapter
         // For "overall" week, ensure summary format
         if ($week === null || $week === 0) {
-            $result['summary for this section on a week'] = $result['summary'] ?? 'Students demonstrated comprehensive learning and skill development through various activities.';
+            $result['summary for this section on a week'] = $result['summary'] ?? '';
         }
 
         return response()->json($result, 200, [
@@ -212,7 +212,7 @@ class ChairSummaryController extends Controller
     {
         $t = trim($text);
         if ($t === '') {
-            return 'For this week, those students completed their weekly activities and learning outcomes.';
+            return '';
         }
         if (preg_match('/^For\s+this\s+week,\s+those\s+students/i', $t)) {
             return $t;

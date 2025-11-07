@@ -606,7 +606,6 @@ CONTEXTUAL INTERPRETATION METHODOLOGY:',
                 }
             } catch (\Throwable $e) {
                 \Log::error('OpenAI API Error:', ['message' => $e->getMessage()]);
-                // fallback to cleaned text summary
             }
         }
 
@@ -732,6 +731,7 @@ CONTEXTUAL INTERPRETATION METHODOLOGY:',
         
         return $result;
     }
+<<<<<<< HEAD
     
     /**
      * Fallback PO analysis directly from activities and learnings
@@ -786,6 +786,8 @@ CONTEXTUAL INTERPRETATION METHODOLOGY:',
         return $posHit;
     }
 
+=======
+>>>>>>> ad4ed098e205915bc585724aebb446763e8ef82a
 }
 
 

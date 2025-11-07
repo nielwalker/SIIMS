@@ -95,18 +95,13 @@ class OpenAISummaryController extends Controller
                     'success' => true
                 ]);
             } else {
-                Log::warning('OpenAI failed, using fallback', ['error' => $response['error'] ?? 'Unknown error']);
-                
-                $fallbackSummary = $this->generateFallbackSummary($activities, $learnings, $assessment);
-                if ($type !== 'overall_summary') {
-                    $fallbackSummary = $this->enforceWeekPrefixForChair($fallbackSummary);
-                }
+                Log::warning('OpenAI failed', ['error' => $response['error'] ?? 'Unknown error']);
                 
                 return response()->json([
-                    'summary' => $fallbackSummary,
-                    'success' => true,
-                    'fallback' => true
-                ]);
+                    'error' => 'OpenAI is not available right now',
+                    'message' => $response['error'] ?? 'Unable to generate summary',
+                    'openai_unavailable' => true
+                ], 503);
             }
             
         } catch (\Exception $e) {
@@ -116,33 +111,11 @@ class OpenAISummaryController extends Controller
                 'request_data' => $request->all()
             ]);
             
-            // Try to provide a fallback summary even on error
-            try {
-                $fallbackSummary = $this->generateFallbackSummary(
-                    $data['corrected_activities'] ?? [],
-                    $data['corrected_learnings'] ?? [],
-                    $data['summary for this section on a week'] ?? ''
-                );
-                if (($request->input('type') ?? 'overall_summary') !== 'overall_summary') {
-                    $fallbackSummary = $this->enforceWeekPrefixForChair($fallbackSummary);
-                }
-                
-                return response()->json([
-                    'summary' => $fallbackSummary,
-                    'success' => true,
-                    'fallback' => true,
-                    'error' => 'OpenAI unavailable, using fallback'
-                ]);
-            } catch (\Exception $fallbackError) {
-                Log::error('Fallback summary also failed', [
-                    'error' => $fallbackError->getMessage()
-                ]);
-                
-                return response()->json([
-                    'error' => 'Internal server error',
-                    'message' => 'Unable to generate summary at this time'
-                ], 500);
-            }
+            return response()->json([
+                'error' => 'OpenAI is not available right now',
+                'message' => 'Unable to generate summary at this time',
+                'openai_unavailable' => true
+            ], 503);
         }
     }
     
@@ -283,35 +256,6 @@ STYLE GUIDELINES:
 Generate a single, polished paragraph that reads like professional academic writing.";
     }
     
-    
-    private function generateFallbackSummary($activities, $learnings, $assessment)
-    {
-        $activitiesText = is_array($activities) ? implode(', ', $activities) : $activities;
-        $learningsText = is_array($learnings) ? implode(', ', $learnings) : $learnings;
-        
-        $summary = "For overall, ";
-        
-        if (!empty($activitiesText)) {
-            $summary .= "students demonstrated comprehensive engagement in various professional activities, including {$activitiesText}. ";
-        }
-        
-        if (!empty($learningsText)) {
-            $summary .= "Through these hands-on experiences, they achieved significant professional development and skill acquisition in {$learningsText}. ";
-        }
-        
-        if (!empty($assessment)) {
-            $summary .= "Furthermore, {$assessment}";
-        }
-        
-        // Clean up any double spaces and ensure proper punctuation
-        $summary = preg_replace('/\s+/', ' ', trim($summary));
-        if (!preg_match('/[.!?]$/', $summary)) {
-            $summary .= '.';
-        }
-        
-        return $summary;
-    }
-
     private function enforceWeekPrefixForChair(string $text): string
     {
         return $this->enforceWeekPrefix($text, 'For this week, those students ');
