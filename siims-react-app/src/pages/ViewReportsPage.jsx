@@ -335,22 +335,32 @@ const ViewReportsPage = ({ authorizeRole }) => {
     setContextBasedContributions(contextContribs);
   }, []);
 
-  // Fetch summary + total hours for coordinator
+  // Fetch summary + PO analysis + total hours for coordinator
   useEffect(() => {
-    const fetchSummary = async () => {
-      if (!selectedStudentId) return;
+    const fetchSummaryAndPOAnalysis = async () => {
+      if (!selectedStudentId) {
+        setStudentSummary("");
+        setPosHit([]);
+        setPosNotHit([]);
+        setPoError("");
+        return;
+      }
       try {
         setSummaryLoading(true);
+        setPoAnalysisLoading(true);
+        setPoError("");
         const resp = await axiosClient.post("/api/v1/summary", {
           studentId: selectedStudentId,
           week: selectedWeek,
-          useGPT: true, // Use OpenAI for summarization
+          useGPT: true, // Use OpenAI for summarization and PO analysis
           analysisType: "coordinator",
           isOverall: false,
         }, {
-          timeout: 90000, // 90 seconds timeout for OpenAI summarization (can be slow)
+          timeout: 90000, // 90 seconds timeout for OpenAI (can be slow)
         });
         const data = resp?.data || {};
+        
+        // Extract summary
         const cleanHtml = (txt) => String(txt || "")
           .replace(/<\s*\/? .*?>/g, " ")
           .replace(/&nbsp;/gi, " ")
@@ -361,16 +371,41 @@ const ViewReportsPage = ({ authorizeRole }) => {
           .trim();
         const s = cleanHtml(data?.summary || "");
         setStudentSummary(s || "No data available.");
-        // Coordinator: do not compute or display recommendations
+        
+        // Extract PO analysis data
+        if (Array.isArray(data?.pos_hit)) {
+          setPosHit(data.pos_hit);
+        } else {
+          setPosHit([]);
+        }
+        
+        if (Array.isArray(data?.pos_not_hit)) {
+          setPosNotHit(data.pos_not_hit);
+        } else {
+          setPosNotHit([]);
+        }
+        
+        // Calculate PO scores for graph (use allEntries filtered by week)
+        const weekEntries = allEntries.filter(e => e.week_number === Number(selectedWeek));
+        calculatePOScores(data, weekEntries);
+        
+        if (data?.openai_unavailable) {
+          setPoError("PO Analysis is currently unavailable. Please try again later.");
+        }
       } catch (e) {
         // Check if it's a timeout error
         if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
           setStudentSummary("Summary generation is taking longer than expected. Please try again.");
+          setPoError("PO Analysis is taking longer than expected. Please try again.");
         } else {
           setStudentSummary("No data available.");
+          setPoError("Failed to load PO analysis. Please try again.");
         }
+        setPosHit([]);
+        setPosNotHit([]);
       } finally {
         setSummaryLoading(false);
+        setPoAnalysisLoading(false);
       }
     };
 
@@ -396,60 +431,8 @@ const ViewReportsPage = ({ authorizeRole }) => {
       }
     };
 
-    fetchSummary();
+    fetchSummaryAndPOAnalysis();
     fetchTotalHours();
-    
-    // Fetch PO Analysis
-    const fetchPOAnalysis = async () => {
-      if (!selectedStudentId) {
-        setPosHit([]);
-        setPosNotHit([]);
-        setPoError("");
-        return;
-      }
-      try {
-        setPoAnalysisLoading(true);
-        setPoError("");
-        const resp = await axiosClient.get("/api/v1/summary/student-po-analysis", {
-          params: {
-            studentId: selectedStudentId,
-            week: selectedWeek,
-            useGPT: true, // PO analysis still uses OpenAI
-          },
-          timeout: 90000, // 90 seconds timeout for PO analysis (OpenAI can be slow)
-        });
-        const data = resp?.data || {};
-        
-        // Extract PO analysis data
-        if (Array.isArray(data?.pos_hit)) {
-          setPosHit(data.pos_hit);
-        } else {
-          setPosHit([]);
-        }
-        
-        if (Array.isArray(data?.pos_not_hit)) {
-          setPosNotHit(data.pos_not_hit);
-        } else {
-          setPosNotHit([]);
-        }
-        
-        // Calculate PO scores for graph (use allEntries filtered by week)
-        const weekEntries = allEntries.filter(e => e.week_number === Number(selectedWeek));
-        calculatePOScores(data, weekEntries);
-        
-        if (data?.openai_unavailable) {
-          setPoError("PO Analysis is currently unavailable. Please try again later.");
-        }
-      } catch (e) {
-        setPoError("Failed to load PO analysis. Please try again.");
-        setPosHit([]);
-        setPosNotHit([]);
-      } finally {
-        setPoAnalysisLoading(false);
-      }
-    };
-    
-    fetchPOAnalysis();
   }, [selectedStudentId, selectedWeek, allEntries, calculatePOScores]);
 
   return (

@@ -120,7 +120,7 @@ $query = DB::table('weekly_entries as we')
 #### Step 3: Summary Generation (OpenAI)
 
 ```php
-// Backend: SummaryController.php → SummaryAdapter.php
+// Backend: Coordinator/SummaryController.php → CoordinatorSummaryAdapter.php
 // Calls OpenAI endpoint for summarization
 $response = $this->openAIService->call($prompt, [
     'model' => 'gpt-4o-mini',
@@ -131,9 +131,9 @@ $response = $this->openAIService->call($prompt, [
 #### Step 4: PO Analysis (OpenAI)
 
 ```php
-// Backend: ChairSummaryController.php → generateForStudent()
+// Backend: Coordinator/CoordinatorSummaryController.php → generateForStudent()
 // Calls OpenAI for PO analysis
-$result = $chairSummaryService->generateSummaryWithPOAnalysis(
+$result = $this->coordinatorSummaryService->generateSummaryWithPOAnalysis(
     $combinedText, 
     $week, 
     $activities, 
@@ -176,9 +176,9 @@ $evaluationResults = $this->evaluationService->evaluate($summary, $referenceText
 - `siims-react-app/src/components/chairperson/ChairpersonSummary.jsx`
 
 **Backend:**
-- `app/Http/Controllers/Api/ChairSummaryController.php` → `generate()` method
-- `app/Services/ChairSummaryAdapter.php` → `summarize()` method
-- `app/Services/OpenAI/ChairSummaryService.php` → `generateSummaryWithPOAnalysis()` method
+- `app/Http/Controllers/Api/Chairperson/ChairSummaryController.php` → `generate()` method
+- `app/Services/Chairperson/ChairSummaryAdapter.php` → `summarize()` method
+- `app/Services/Chairperson/ChairpersonSummaryService.php` → `generateSummaryWithPOAnalysis()` method
 
 **Routes:**
 - `GET /api/v1/summary/chair` (for chairperson summary and PO analysis)
@@ -261,7 +261,7 @@ $summary = $this->openAIService->call($prompt, [
 #### Step 6: Generate PO Analysis (OpenAI)
 
 ```php
-// Backend: ChairSummaryService.php
+// Backend: Chairperson/ChairpersonSummaryService.php
 $result = $this->openAIService->call($prompt, [
     'model' => 'gpt-4o-mini',
     'max_tokens' => 3000,
@@ -295,9 +295,9 @@ $evaluationResults = $this->evaluationService->evaluate($summary, $referenceText
 
 1. **Input**: Student's weekly activities and learnings
 2. **Process**: 
-   - `SummaryController.php` → `generate()`
-   - `SummaryAdapter.php` → `analyze()`
-   - `OpenAI/CoordinatorSummaryController.php` → `summarize()`
+   - `Coordinator/SummaryController.php` → `generate()`
+   - `Coordinator/CoordinatorSummaryAdapter.php` → `analyze()`
+   - `OpenAI/CoordinatorOpenAISummaryController.php` → `summarize()`
    - `OpenAIService.php` → `call()` → OpenAI API
 3. **Output**: Summary in third-person format (e.g., "For this week, the student...")
 
@@ -305,23 +305,23 @@ $evaluationResults = $this->evaluationService->evaluate($summary, $referenceText
 
 1. **Input**: All students' weekly activities and learnings (aggregated)
 2. **Process**:
-   - `ChairSummaryController.php` → `generate()`
-   - `ChairSummaryAdapter.php` → `summarize()`
-   - `OpenAI/SummaryController.php` → `summarize()`
+   - `Chairperson/ChairSummaryController.php` → `generate()`
+   - `Chairperson/ChairSummaryAdapter.php` → `summarize()`
+   - `OpenAI/ChairpersonOpenAISummaryController.php` → `summarize()`
    - `OpenAIService.php` → `call()` → OpenAI API
 3. **Output**: Aggregated summary in third-person format (e.g., "For this week, those students...")
 
 ### Code Files
 
 **Controllers:**
-- `app/Http/Controllers/Api/SummaryController.php`
-- `app/Http/Controllers/Api/ChairSummaryController.php`
-- `app/Http/Controllers/Api/OpenAI/SummaryController.php`
-- `app/Http/Controllers/Api/OpenAI/CoordinatorSummaryController.php`
+- `app/Http/Controllers/Api/Coordinator/SummaryController.php`
+- `app/Http/Controllers/Api/Chairperson/ChairSummaryController.php`
+- `app/Http/Controllers/Api/OpenAI/ChairpersonOpenAISummaryController.php`
+- `app/Http/Controllers/Api/OpenAI/CoordinatorOpenAISummaryController.php`
 
 **Services:**
-- `app/Services/SummaryAdapter.php`
-- `app/Services/ChairSummaryAdapter.php`
+- `app/Services/Coordinator/CoordinatorSummaryAdapter.php`
+- `app/Services/Chairperson/ChairSummaryAdapter.php`
 - `app/Services/OpenAI/OpenAIService.php`
 - `app/Services/OpenAI/PromptBuilder.php`
 - `app/Services/OpenAI/CoordinatorPromptBuilder.php`
@@ -335,7 +335,7 @@ $evaluationResults = $this->evaluationService->evaluate($summary, $referenceText
 #### Step 1: Extract Activities and Learnings
 
 ```php
-// Backend: ChairSummaryController.php
+// Backend: Chairperson/ChairSummaryController.php
 $activities = []; // All activities from weekly entries
 $learnings = [];  // All learnings from weekly entries
 ```
@@ -343,7 +343,8 @@ $learnings = [];  // All learnings from weekly entries
 #### Step 2: Build OpenAI Prompt
 
 ```php
-// Backend: ChairSummaryPromptBuilder.php
+// Backend: Chairperson/ChairpersonPOPromptBuilder.php (for chairperson)
+// Backend: Coordinator/CoordinatorPOPromptBuilder.php (for coordinator)
 $prompt = $this->buildPOAnalysisPrompt($text, $week, $activities, $learnings);
 // Prompt includes:
 // - PO definitions (PO1-PO15)
@@ -354,7 +355,8 @@ $prompt = $this->buildPOAnalysisPrompt($text, $week, $activities, $learnings);
 #### Step 3: Call OpenAI API
 
 ```php
-// Backend: ChairSummaryService.php
+// Backend: Chairperson/ChairpersonSummaryService.php (for chairperson)
+// Backend: Coordinator/CoordinatorSummaryService.php (for coordinator)
 $response = $this->openAIService->call($prompt, [
     'model' => 'gpt-4o-mini',
     'max_tokens' => 3000,
@@ -365,7 +367,8 @@ $response = $this->openAIService->call($prompt, [
 #### Step 4: Parse OpenAI Response
 
 ```php
-// Backend: ChairSummaryService.php
+// Backend: Chairperson/ChairpersonSummaryService.php (for chairperson)
+// Backend: Coordinator/CoordinatorSummaryService.php (for coordinator)
 $json = json_decode($response['content'], true);
 // Extracts:
 // - pos_hit: Array of achieved POs with reasons
@@ -386,9 +389,11 @@ const finalScore = (wordScore * 0.4) + (contextScore * 0.6);
 ### Code Files
 
 **Services:**
-- `app/Services/OpenAI/ChairSummaryService.php`
-- `app/Services/OpenAI/ChairSummaryPromptBuilder.php`
-- `app/Services/ChairSummaryAdapter.php`
+- `app/Services/Chairperson/ChairpersonSummaryService.php`
+- `app/Services/Chairperson/ChairpersonPOPromptBuilder.php`
+- `app/Services/Coordinator/CoordinatorSummaryService.php`
+- `app/Services/Coordinator/CoordinatorPOPromptBuilder.php`
+- `app/Services/Chairperson/ChairSummaryAdapter.php`
 
 **Frontend:**
 - `siims-react-app/src/components/chairperson/ChairpersonSummary.jsx` (PO graph and scoring)
@@ -402,7 +407,8 @@ const finalScore = (wordScore * 0.4) + (contextScore * 0.6);
 #### Step 1: Build Reference Text
 
 ```php
-// Backend: ChairSummaryController.php
+// Backend: Chairperson/ChairSummaryController.php (for chairperson)
+// Backend: Coordinator/CoordinatorSummaryController.php (for coordinator)
 $referenceText = $this->buildReferenceText($activities, $learnings);
 // Combines all activities and learnings from database
 ```
@@ -469,10 +475,10 @@ $this->logResults($evaluationResults, 'Chairperson Summary');
 - `app/Services/OpenAI/SummaryEvaluationService.php`
 
 **Controllers (where evaluation is called):**
-- `app/Http/Controllers/Api/SummaryController.php`
-- `app/Http/Controllers/Api/ChairSummaryController.php`
-- `app/Http/Controllers/Api/OpenAI/SummaryController.php`
-- `app/Http/Controllers/Api/OpenAI/CoordinatorSummaryController.php`
+- `app/Http/Controllers/Api/Coordinator/SummaryController.php`
+- `app/Http/Controllers/Api/Chairperson/ChairSummaryController.php`
+- `app/Http/Controllers/Api/OpenAI/ChairpersonOpenAISummaryController.php`
+- `app/Http/Controllers/Api/OpenAI/CoordinatorOpenAISummaryController.php`
 
 ---
 
@@ -482,25 +488,27 @@ $this->logResults($evaluationResults, 'Chairperson Summary');
 
 1. **Student submits** → `StudentWeeklyAccomplishmentPage.jsx`
 2. **Saved to database** → `WeeklyEntryController.php`
-3. **Coordinator views** → `ViewReportsPage.jsx` → `SummaryController.php`
-4. **Chairperson views** → `ChairpersonSummary.jsx` → `ChairSummaryController.php`
+3. **Coordinator views** → `ViewReportsPage.jsx` → `Coordinator/SummaryController.php`
+4. **Chairperson views** → `ChairpersonSummary.jsx` → `Chairperson/ChairSummaryController.php`
 
 ### When Asked: "Where is the summary generated?"
 
-- **Coordinator Summary**: `OpenAI/CoordinatorSummaryController.php` → `summarize()`
-- **Chairperson Summary**: `OpenAI/SummaryController.php` → `summarize()`
+- **Coordinator Summary**: `OpenAI/CoordinatorOpenAISummaryController.php` → `summarize()`
+- **Chairperson Summary**: `OpenAI/ChairpersonOpenAISummaryController.php` → `summarize()`
 - **OpenAI Service**: `OpenAI/OpenAIService.php` → `call()`
 
 ### When Asked: "Where is PO analysis done?"
 
-- **Service**: `OpenAI/ChairSummaryService.php` → `generateSummaryWithPOAnalysis()`
-- **Prompt Builder**: `OpenAI/ChairSummaryPromptBuilder.php` → `buildPOAnalysisPrompt()`
-- **Adapter**: `ChairSummaryAdapter.php` → `summarize()`
+- **Chairperson Service**: `Chairperson/ChairpersonSummaryService.php` → `generateSummaryWithPOAnalysis()`
+- **Coordinator Service**: `Coordinator/CoordinatorSummaryService.php` → `generateSummaryWithPOAnalysis()`
+- **Chairperson Prompt Builder**: `Chairperson/ChairpersonPOPromptBuilder.php` → `buildPOAnalysisPrompt()`
+- **Coordinator Prompt Builder**: `Coordinator/CoordinatorPOPromptBuilder.php` → `buildPOAnalysisPrompt()`
+- **Chairperson Adapter**: `Chairperson/ChairSummaryAdapter.php` → `summarize()`
 
 ### When Asked: "Where are evaluation metrics calculated?"
 
 - **Service**: `OpenAI/SummaryEvaluationService.php` → `evaluate()`
-- **Called from**: `SummaryController.php`, `ChairSummaryController.php`
+- **Called from**: `Coordinator/SummaryController.php`, `Chairperson/ChairSummaryController.php`, `Coordinator/CoordinatorSummaryController.php`
 - **Results logged to**: `storage/logs/laravel.log`
 
 ---

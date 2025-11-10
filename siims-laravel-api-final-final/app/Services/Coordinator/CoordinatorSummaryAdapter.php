@@ -1,25 +1,27 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Coordinator;
 
 use App\Services\OpenAI\OpenAIService;
 use App\Services\OpenAI\CoordinatorPromptBuilder;
-use App\Services\OpenAI\PromptBuilder;
 
-class SummaryAdapter
+/**
+ * Coordinator Summary Adapter
+ * 
+ * Handles summary generation for coordinator view (single student).
+ * Uses OpenAI for summarization.
+ */
+class CoordinatorSummaryAdapter
 {
     protected $openAIService;
     protected $coordinatorPromptBuilder;
-    protected $chairPromptBuilder;
 
     public function __construct(
         OpenAIService $openAIService,
-        CoordinatorPromptBuilder $coordinatorPromptBuilder,
-        PromptBuilder $chairPromptBuilder
+        CoordinatorPromptBuilder $coordinatorPromptBuilder
     ) {
         $this->openAIService = $openAIService;
         $this->coordinatorPromptBuilder = $coordinatorPromptBuilder;
-        $this->chairPromptBuilder = $chairPromptBuilder;
     }
 
     /**
@@ -27,7 +29,7 @@ class SummaryAdapter
      * Uses OpenAI for summarization.
      *
      * @param string $text
-     * @param string|null $analysisType 'chairman' | 'coordinator' | null
+     * @param string|null $analysisType 'coordinator' | null
      * @param bool $useGPT Whether to use OpenAI (always true now)
      * @param int|null $week Week number (optional, passed directly from controller)
      * @return array{ summary: string, keywordScores: array<int,int>, usedGPT: bool }
@@ -87,33 +89,18 @@ class SummaryAdapter
         if ($clean && $useGPT && $this->openAIService->isAvailable()) {
             try {
                 // Prepare activities and learnings for prompt building
-                // Both coordinator and chairperson use activities and learnings
-                // The combined text already contains both, so we pass it as learnings
                 $activities = [];
                 $learnings = [$clean]; // Combined text includes both activities and learnings
                 
-                // Build prompt based on analysis type
-                if ($analysisType === 'coordinator') {
-                    $prompt = $this->coordinatorPromptBuilder->buildPrompt($activities, $learnings, '');
-                    $response = $this->openAIService->callSimple($prompt, 'gpt-3.5-turbo', 300, 0.6, 30);
-                } else {
-                    $prompt = $this->chairPromptBuilder->buildSummaryPrompt($activities, $learnings, '', 'overall_summary');
-                    $response = $this->openAIService->call($prompt, [
-                        'model' => 'gpt-4o-mini',
-                        'max_tokens' => 3000,
-                        'temperature' => 0.2,
-                        'timeout' => 90,
-                    ]);
-                }
+                // Build prompt for coordinator
+                $prompt = $this->coordinatorPromptBuilder->buildPrompt($activities, $learnings, '');
+                $response = $this->openAIService->callSimple($prompt, 'gpt-3.5-turbo', 300, 0.6, 30);
                 
                 if ($response['success']) {
                     $summary = $this->openAIService->cleanText($response['summary'] ?? $response['content'] ?? '');
-                    if ($analysisType === 'coordinator' && !preg_match('/^For\s+this\s+week,\s+the\s+student/i', $summary)) {
+                    if (!preg_match('/^For\s+this\s+week,\s+the\s+student/i', $summary)) {
                         $weekLabel = $weekNumber ? "week {$weekNumber}" : "this week";
                         $summary = "For {$weekLabel}, the student " . ltrim($summary);
-                    } elseif ($analysisType === 'chairman' && !preg_match('/^For\s+this\s+week/i', $summary)) {
-                        $weekLabel = $weekNumber ? "week {$weekNumber}" : "this week";
-                        $summary = "For {$weekLabel}, those students " . ltrim($summary);
                     }
                     $usedGPT = true;
                 } else {
@@ -136,5 +123,4 @@ class SummaryAdapter
         ];
     }
 }
-
 

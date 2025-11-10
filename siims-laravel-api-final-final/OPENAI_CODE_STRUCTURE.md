@@ -5,23 +5,28 @@
 ```
 app/
 ├── Http/Controllers/Api/
-│   ├── SummaryController.php          ← Main controller for coordinator summaries
-│   └── ChairSummaryController.php     ← Main controller for chairperson summaries
-│
-├── Http/Controllers/Api/OpenAI/
-│   ├── SummaryController.php          ← OpenAI endpoint for chairperson summaries
-│   └── CoordinatorSummaryController.php ← OpenAI endpoint for coordinator summaries
+│   ├── Chairperson/
+│   │   └── ChairSummaryController.php ← Chairperson summary + PO analysis
+│   ├── Coordinator/
+│   │   ├── CoordinatorSummaryController.php ← Coordinator PO analysis
+│   │   └── SummaryController.php          ← Coordinator summaries
+│   └── OpenAI/
+│       ├── ChairpersonOpenAISummaryController.php ← OpenAI endpoint for chairperson summaries
+│       └── CoordinatorOpenAISummaryController.php ← OpenAI endpoint for coordinator summaries
 │
 └── Services/
-    ├── SummaryAdapter.php             ← Adapter for coordinator summaries
-    ├── ChairSummaryAdapter.php        ← Adapter for chairperson summaries
-    │
+    ├── Chairperson/
+    │   ├── ChairpersonPOPromptBuilder.php ← Builds prompts for chairperson PO analysis
+    │   ├── ChairpersonSummaryService.php    ← Service for chairperson PO analysis only
+    │   └── ChairSummaryAdapter.php        ← Adapter for chairperson summaries
+    ├── Coordinator/
+    │   ├── CoordinatorPOPromptBuilder.php ← Builds prompts for coordinator PO analysis
+    │   ├── CoordinatorSummaryService.php    ← Service for coordinator PO analysis only
+    │   └── CoordinatorSummaryAdapter.php             ← Adapter for coordinator summaries
     └── OpenAI/
         ├── OpenAIService.php          ← Core service: Makes actual API calls to OpenAI
-        ├── PromptBuilder.php          ← Builds prompts for chairperson
-        ├── CoordinatorPromptBuilder.php ← Builds prompts for coordinator
-        ├── ChairSummaryPromptBuilder.php ← Builds prompts for PO analysis
-        ├── ChairSummaryService.php    ← Service for PO analysis only
+        ├── PromptBuilder.php          ← Builds prompts for chairperson summaries
+        ├── CoordinatorPromptBuilder.php ← Builds prompts for coordinator summaries
         └── SummaryEvaluationService.php ← Calculates ROUGE & BERT scores
 ```
 
@@ -39,29 +44,36 @@ app/
   - Calls: `SummaryAdapter` for OpenAI summarization
   - Returns: Summary + keyword scores + evaluation metrics
 
-- **`ChairSummaryController.php`** = Handles chairperson summary requests
+- **`Chairperson/ChairSummaryController.php`** = Handles chairperson summary requests
   - Receives: `coordinatorId`, `sectionId`, `week`, `useGPT`
   - Fetches: All students' weekly entries under coordinator
   - Does: Checks cache, extracts activities/learnings
   - Calls: `ChairSummaryAdapter` for summary + PO analysis
   - Returns: Summary + PO analysis + evaluation metrics
 
+- **`Coordinator/CoordinatorSummaryController.php`** = Handles coordinator PO analysis requests
+  - Receives: `studentId`, `week`, `useGPT`
+  - Fetches: Weekly entries for a single student
+  - Does: Extracts activities/learnings
+  - Calls: `CoordinatorSummaryService` for PO analysis
+  - Returns: PO analysis + evaluation metrics
+
 ---
 
 ### 2. **Adapters** (`app/Services/`)
 **What they do**: Bridge between controllers and OpenAI services. Prepare data and format responses.
 
-- **`SummaryAdapter.php`** = For coordinator summaries
+- **`Coordinator/CoordinatorSummaryAdapter.php`** = For coordinator summaries
   - Receives: Combined text (activities + learnings)
   - Does: Keyword matching (word-based text mining)
-  - Calls: `OpenAIService` via `CoordinatorPromptBuilder` or `PromptBuilder`
+  - Calls: `OpenAIService` via `CoordinatorPromptBuilder`
   - Returns: Summary + keyword scores
 
-- **`ChairSummaryAdapter.php`** = For chairperson summaries + PO analysis
+- **`Chairperson/ChairSummaryAdapter.php`** = For chairperson summaries + PO analysis
   - Receives: Combined text, activities array, learnings array
   - Does: 
     1. Calls `OpenAIService` for summary generation
-    2. Calls `ChairSummaryService` for PO analysis
+    2. Calls `ChairpersonSummaryService` for PO analysis
   - Returns: Summary + PO analysis (pos_hit, pos_not_hit, recommendations)
 
 ---
@@ -84,15 +96,26 @@ app/
 - Method: `buildPrompt($activities, $learnings, $assessment)`
 - Returns: Formatted prompt string
 
-#### **`ChairSummaryPromptBuilder.php`** = Builds prompts for PO analysis
-**What it does**: Creates prompts for Program Outcome analysis
+#### **`Chairperson/ChairpersonPOPromptBuilder.php`** = Builds prompts for chairperson PO analysis
+**What it does**: Creates prompts for Program Outcome analysis for chairperson
 - Method: `buildPOAnalysisPrompt($text, $week, $activities, $learnings)`
 - Returns: Detailed prompt with PO definitions and instructions
 
-#### **`ChairSummaryService.php`** = Service for PO analysis
-**What it does**: Handles PO analysis ONLY (not summary generation)
+#### **`Coordinator/CoordinatorPOPromptBuilder.php`** = Builds prompts for coordinator PO analysis
+**What it does**: Creates prompts for Program Outcome analysis for coordinator
+- Method: `buildPOAnalysisPrompt($text, $week, $activities, $learnings)`
+- Returns: Detailed prompt with PO definitions and instructions
+
+#### **`Chairperson/ChairpersonSummaryService.php`** = Service for chairperson PO analysis
+**What it does**: Handles PO analysis ONLY (not summary generation) for chairperson
 - Method: `generateSummaryWithPOAnalysis($text, $week, $activities, $learnings)`
-- Calls: `OpenAIService` with `ChairSummaryPromptBuilder`
+- Calls: `OpenAIService` with `ChairpersonPOPromptBuilder`
+- Returns: PO analysis (pos_hit, pos_not_hit, po_word_hit, po_context_hit, recommendations)
+
+#### **`Coordinator/CoordinatorSummaryService.php`** = Service for coordinator PO analysis
+**What it does**: Handles PO analysis ONLY (not summary generation) for coordinator
+- Method: `generateSummaryWithPOAnalysis($text, $week, $activities, $learnings)`
+- Calls: `OpenAIService` with `CoordinatorPOPromptBuilder`
 - Returns: PO analysis (pos_hit, pos_not_hit, po_word_hit, po_context_hit, recommendations)
 
 #### **`SummaryEvaluationService.php`** = Evaluates summary quality
@@ -106,8 +129,8 @@ app/
 ### 4. **OpenAI Controllers** (`app/Http/Controllers/Api/OpenAI/`)
 **What they do**: Direct endpoints for OpenAI summarization (legacy/alternative routes)
 
-- **`SummaryController.php`** = Direct OpenAI endpoint for chairperson
-- **`CoordinatorSummaryController.php`** = Direct OpenAI endpoint for coordinator
+- **`ChairpersonOpenAISummaryController.php`** = Direct OpenAI endpoint for chairperson
+- **`CoordinatorOpenAISummaryController.php`** = Direct OpenAI endpoint for coordinator
 
 ---
 
@@ -120,14 +143,14 @@ Frontend (React)
     ↓ POST /api/v1/summary
     { studentId: 123, week: 5, useGPT: true, analysisType: "coordinator" }
     ↓
-SummaryController.php
+Coordinator/SummaryController.php
     ↓
     1. Receives request parameters
     2. Queries database: SELECT * FROM weekly_entries WHERE student_id = 123 AND week_number = 5
     3. Combines activities + learnings into text
     4. Does keyword matching (word-based text mining)
     ↓
-SummaryAdapter.php
+Coordinator/CoordinatorSummaryAdapter.php
     ↓
     1. Receives combined text
     2. Calls CoordinatorPromptBuilder → builds prompt
@@ -167,7 +190,7 @@ Frontend receives:
 Frontend (React)
     ↓ GET /api/v1/summary/chair?coordinatorId=1&week=5&useGPT=true
     ↓
-ChairSummaryController.php
+Chairperson/ChairSummaryController.php
     ↓
     1. Receives request parameters
     2. Queries database: SELECT * FROM weekly_entries 
@@ -178,28 +201,28 @@ ChairSummaryController.php
     If cached: Returns cached result
     If not cached:
     ↓
-ChairSummaryAdapter.php
+Chairperson/ChairSummaryAdapter.php
     ↓
     1. Calls OpenAIService for SUMMARY:
        - Uses PromptBuilder.buildSummaryPrompt()
        - Gets summary text
     ↓
-    2. Calls ChairSummaryService for PO ANALYSIS:
-       - Uses ChairSummaryPromptBuilder.buildPOAnalysisPrompt()
+    2. Calls ChairpersonSummaryService for PO ANALYSIS:
+       - Uses ChairpersonPOPromptBuilder.buildPOAnalysisPrompt()
        - Gets PO analysis (pos_hit, pos_not_hit, recommendations)
     ↓
-ChairSummaryService.php
+Chairperson/ChairpersonSummaryService.php
     ↓
     1. Calls OpenAIService.call() with PO analysis prompt
     2. Parses JSON response from OpenAI
     3. Extracts: pos_hit, pos_not_hit, po_word_hit, po_context_hit
     ↓
-ChairSummaryAdapter.php
+Chairperson/ChairSummaryAdapter.php
     ↓
     1. Merges summary + PO analysis
     2. Returns complete result
     ↓
-ChairSummaryController.php
+Chairperson/ChairSummaryController.php
     ↓
     1. Saves to cache (po_analysis_cache table)
     2. Calls SummaryEvaluationService → calculates ROUGE/BERT scores

@@ -1,12 +1,12 @@
 <?php
 
-namespace App\Http\Controllers\Api;
+namespace App\Http\Controllers\Api\Chairperson;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Services\ChairSummaryAdapter;
+use App\Services\Chairperson\ChairSummaryAdapter;
 use App\Services\OpenAI\SummaryEvaluationService;
 
 class ChairSummaryController extends Controller
@@ -341,107 +341,6 @@ class ChairSummaryController extends Controller
         ]);
     }
 
-    /**
-     * Generate PO analysis for a single student (for coordinators)
-     */
-    public function generateForStudent(Request $request, ChairSummaryAdapter $adapter): JsonResponse
-    {
-        $studentId = $request->input('studentId');
-        $week = $request->integer('week');
-        $useGPT = (bool) $request->input('useGPT', true);
-        
-        // Verify coordinator has access to this student
-        $user = auth()->user();
-        if (!$user) {
-            return response()->json(['error' => 'Unauthorized'], 401);
-        }
-        
-        // Check if user is coordinator and student belongs to them
-        if ($user->hasRole('coordinator')) {
-            $student = DB::table('students')->where('id', $studentId)->first();
-            if (!$student || $student->coordinator_id != $user->id) {
-                return response()->json(['error' => 'Access denied'], 403);
-            }
-        } elseif (!$user->hasRole('chairperson')) {
-            return response()->json(['error' => 'Unauthorized'], 401);
-        }
-
-        // Fetch weekly entries for this specific student
-        $query = DB::table('weekly_entries as we')
-            ->select('we.week_number as weekNumber', 'we.tasks', 'we.learnings')
-            ->where('we.student_id', $studentId);
-
-        if ($week) {
-            $query->where('we.week_number', $week);
-        }
-
-        $rows = $query->get();
-        
-        // Extract activities/tasks and learnings separately for PO analysis
-        $activities = [];
-        $learnings = [];
-        
-        foreach ($rows as $row) {
-            if (!empty($row->tasks)) {
-                $cleanTasks = strip_tags($row->tasks);
-                $cleanTasks = preg_replace('/\s+/', ' ', $cleanTasks);
-                $cleanTasks = trim($cleanTasks);
-                if (!empty($cleanTasks)) {
-                    $activities[] = $cleanTasks;
-                }
-            }
-            if (!empty($row->learnings)) {
-                $cleanLearnings = strip_tags($row->learnings);
-                $cleanLearnings = preg_replace('/\s+/', ' ', $cleanLearnings);
-                $cleanLearnings = trim($cleanLearnings);
-                if (!empty($cleanLearnings)) {
-                    $learnings[] = $cleanLearnings;
-                }
-            }
-        }
-        
-        // Remove duplicates
-        $activities = array_values(array_unique(array_filter($activities)));
-        $learnings = array_values(array_unique(array_filter($learnings)));
-        
-        // Combined text for summary generation
-        $combined = $rows->map(function ($r) {
-            $t = trim(($r->tasks ?? '') . ' ' . ($r->learnings ?? ''));
-            $t = preg_replace('/\s+/', ' ', $t);
-            if ($t && !preg_match('/[.!?]$/', $t)) { $t .= '.'; }
-            return $t;
-        })->filter()->implode(' ');
-
-        // Enforce third-person phrasing
-        $combined = $this->convertToThirdPerson($combined);
-
-        // Use adapter - pass activities and learnings separately for PO analysis
-        $result = $adapter->summarize($combined, $week, $useGPT, $activities, $learnings);
-        
-        // Check if OpenAI was unavailable
-        if (isset($result['openai_unavailable']) && $result['openai_unavailable']) {
-            return response()->json($result, 503, [
-                'Access-Control-Allow-Origin' => '*',
-                'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
-                'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
-            ]);
-        }
-        
-        // Ensure result summary is third-person
-        if (isset($result['summary'])) {
-            $result['summary'] = $this->convertToThirdPerson($result['summary']);
-            if (!empty($week)) {
-                $result['summary'] = $this->enforceWeekPrefix($result['summary']);
-            }
-        }
-
-        return response()->json($result, 200, [
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
-        ]);
-    }
-
     private function enforceWeekPrefix(string $text): string
     {
         $t = trim($text);
@@ -552,5 +451,4 @@ class ChairSummaryController extends Controller
         return implode(' ', $parts);
     }
 }
-
 

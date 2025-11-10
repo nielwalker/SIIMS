@@ -1,14 +1,14 @@
 <?php
 
-namespace App\Services\OpenAI;
+namespace App\Services\Chairperson;
 
 /**
- * Chair Summary Prompt Builder
+ * Chairperson PO Prompt Builder
  * 
- * Builds comprehensive prompts for chairperson summary generation with PO analysis.
- * Extracted from ChairSummaryAdapter to centralize prompt building logic.
+ * Builds comprehensive prompts for PO (Program Outcome) analysis for chairperson views.
+ * Analyzes multiple students' activities and learnings to identify achieved POs.
  */
-class ChairSummaryPromptBuilder
+class ChairpersonPOPromptBuilder
 {
     /**
      * PO detailed descriptions
@@ -92,7 +92,7 @@ class ChairSummaryPromptBuilder
     ];
 
     /**
-     * Build PO analysis prompt
+     * Build PO analysis prompt for chairperson (multiple students)
      *
      * @param string $text
      * @param int|null $week
@@ -125,11 +125,11 @@ class ChairSummaryPromptBuilder
     }
 
     /**
-     * Build system message
+     * Build system message for chairperson (multiple students context)
      */
     private function buildSystemMessage(string $poContextGuide, string $weekLabel): string
     {
-        return "You are a BSIT internship evaluator. Your PRIMARY JOB is to identify Program Outcomes (POs) from raw weekly reports.
+        return "You are a BSIT internship evaluator. Your PRIMARY JOB is to identify Program Outcomes (POs) from raw weekly reports for MULTIPLE STUDENTS (chairperson view).
 
 PROGRAM OUTCOMES (PO1-PO15):
 {$poContextGuide}
@@ -149,6 +149,7 @@ PO ANALYSIS SOURCE (CRITICAL):
 - Analyze POs using ONLY \"RAW WEEKLY REPORT DATA\" (Activities/Tasks + Learnings)
 - IGNORE summary text for PO analysis - it changes and is unreliable
 - Activities/Learnings = SOURCE OF TRUTH for PO matching
+- This is for MULTIPLE STUDENTS - aggregate analysis across all students
 
 SUMMARY GENERATION:
 - Summary can vary based on combined text
@@ -266,7 +267,7 @@ Return ONLY the JSON object, no additional text before or after.";
     }
 
     /**
-     * Build user message
+     * Build user message for chairperson (multiple students)
      */
     private function buildUserMessage(string $text, array $activities, array $learnings): string
     {
@@ -286,8 +287,8 @@ Return ONLY the JSON object, no additional text before or after.";
         
         $summaryText = $text;
         $poAnalysisText = "=== RAW WEEKLY REPORT DATA (SOURCE OF TRUTH FOR PO ANALYSIS) ===\n\n" .
-                         "STUDENT ACTIVITIES/TASKS (from database):\n" . $activitiesText . "\n\n" .
-                         "STUDENT LEARNINGS (from database):\n" . $learningsText;
+                         "STUDENT ACTIVITIES/TASKS (from database - MULTIPLE STUDENTS):\n" . $activitiesText . "\n\n" .
+                         "STUDENT LEARNINGS (from database - MULTIPLE STUDENTS):\n" . $learningsText;
         
         return "=== IGNORE THIS FOR PO ANALYSIS ===\n" .
                "SUMMARY GENERATION DATA (for summary only, can vary):\n" . 
@@ -296,7 +297,7 @@ Return ONLY the JSON object, no additional text before or after.";
                "=== USE THIS FOR PO ANALYSIS (RAW DATA FROM DATABASE - MANDATORY) ===\n" .
                $poAnalysisText . "\n\n" .
                "CRITICAL INSTRUCTIONS:\n" .
-               "1. Read the STUDENT ACTIVITIES/TASKS and STUDENT LEARNINGS sections above\n" .
+               "1. Read the STUDENT ACTIVITIES/TASKS and STUDENT LEARNINGS sections above (from MULTIPLE STUDENTS)\n" .
                "2. For each activity/learning, identify which POs it demonstrates\n" .
                "3. Build pos_hit array with objects: [{\"po\": \"PO5\", \"reason\": \"Students participated in orientation showing teamwork\"}, ...]\n" .
                "4. If you see words like 'participated', 'orientation', 'discussed', 'learned', 'house rules', 'projects' - these DEMONSTRATE MULTIPLE POs\n" .

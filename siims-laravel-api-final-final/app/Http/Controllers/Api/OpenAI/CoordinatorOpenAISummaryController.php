@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Log;
  * Handles OpenAI summarization requests for coordinator role.
  * Moved from App\Http\Controllers\Api\CoordinatorOpenAISummaryController
  */
-class CoordinatorSummaryController extends Controller
+class CoordinatorOpenAISummaryController extends Controller
 {
     protected $openAIService;
     protected $promptBuilder;

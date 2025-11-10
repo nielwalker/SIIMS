@@ -1,10 +1,10 @@
 <?php
 
-namespace App\Services;
+namespace App\Services\Chairperson;
 
 use App\Services\OpenAI\OpenAIService;
 use App\Services\OpenAI\PromptBuilder;
-use App\Services\OpenAI\ChairSummaryService;
+use App\Services\Chairperson\ChairpersonSummaryService;
 
 class ChairSummaryAdapter
 {
@@ -274,11 +274,11 @@ class ChairSummaryAdapter
             $summary = $clean ?: '';
         }
 
-        // Use OpenAI service for PO analysis
+        // Use ChairpersonSummaryService for PO analysis
         if ($useGPT && !empty($clean)) {
             try {
-                $chairSummaryService = app(ChairSummaryService::class);
-                $result = $chairSummaryService->generateSummaryWithPOAnalysis($clean, $week, $activities, $learnings);
+                $chairpersonSummaryService = app(ChairpersonSummaryService::class);
+                $result = $chairpersonSummaryService->generateSummaryWithPOAnalysis($clean, $week, $activities, $learnings);
 
                 // Use OpenAI-generated summary (already set above)
                 if (isset($result['summary'])) {
@@ -299,7 +299,7 @@ class ChairSummaryAdapter
                     return $result;
                 }
             } catch (\Throwable $e) {
-                \Log::error('Error calling ChairSummaryService', [
+                \Log::error('Error calling ChairpersonSummaryService', [
                     'message' => $e->getMessage(),
                     'trace' => $e->getTraceAsString()
                 ]);
@@ -337,3 +337,4 @@ class ChairSummaryAdapter
         ];
     }
 }
+
