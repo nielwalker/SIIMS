@@ -7,9 +7,18 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use App\Services\SummaryAdapter;
+use App\Services\OpenAI\SummaryEvaluationService;
+use Illuminate\Support\Facades\Log;
 
 class SummaryController extends Controller
 {
+    protected $evaluationService;
+
+    public function __construct(SummaryEvaluationService $evaluationService)
+    {
+        $this->evaluationService = $evaluationService;
+    }
+
     public function options(): JsonResponse
     {
         return response()->json(null, 204, [
@@ -136,20 +145,83 @@ class SummaryController extends Controller
         // Note: Context-based matching is only done by OpenAI, not here
         // This controller only does word-based text mining (keyword matching)
 
-        // Pass week number to adapter for NLP summarization
-        // NLP service will format the summary with proper week prefix
+        // Pass week number to adapter for OpenAI summarization
+        // OpenAI service will format the summary with proper week prefix
         $result = $adapter->analyze($combined, $analysisType, $useGPT, $week);
         $summary = $result['summary'];
+
+        // EVALUATION: Compare summary against raw database data
+        // Build reference text from raw activities and learnings
+        $referenceText = $this->buildReferenceText($reports, $analysisType);
+        
+        // Only evaluate if we have both summary and reference text
+        $evaluationResults = null;
+        if (!empty($summary) && !empty($referenceText)) {
+            try {
+                Log::info('Starting summary evaluation', [
+                    'analysis_type' => $analysisType,
+                    'summary_length' => strlen($summary),
+                    'reference_length' => strlen($referenceText)
+                ]);
+                
+                $evaluationResults = $this->evaluationService->evaluate($summary, $referenceText);
+                
+                // Log evaluation results to console and Laravel log
+                $context = $analysisType === 'coordinator' ? 'Coordinator Summary' : 'Chairperson Summary';
+                $this->evaluationService->logResults($evaluationResults, $context);
+                
+                Log::info('Summary evaluation completed', [
+                    'rouge1_f1' => $evaluationResults['rouge1']['f1'],
+                    'rouge2_f1' => $evaluationResults['rouge2']['f1'],
+                    'rougeL_f1' => $evaluationResults['rougeL']['f1'],
+                    'bertScore' => $evaluationResults['bertScore']
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('Summary evaluation error', ['error' => $e->getMessage()]);
+            }
+        }
 
         return response()->json([
             'summary' => $summary,
             'keywordScores' => $keywordScores, // Word-based text mining scores only
             'usedGPT' => (bool) $result['usedGPT'],
+            'evaluation' => $evaluationResults, // Include evaluation in response for debugging
         ], 200, [
             'Access-Control-Allow-Origin' => '*',
             'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
             'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
         ]);
+    }
+    
+    /**
+     * Build reference text from raw database data for evaluation
+     * 
+     * @param array $reports Raw reports from database
+     * @param string|null $analysisType 'coordinator' or 'chairman'
+     * @return string Combined reference text
+     */
+    private function buildReferenceText(array $reports, ?string $analysisType): string
+    {
+        $parts = [];
+        
+        foreach ($reports as $report) {
+            // For coordinator, focus on learnings
+            if ($analysisType === 'coordinator') {
+                if (!empty($report['learnings'])) {
+                    $parts[] = trim($report['learnings']);
+                }
+            } else {
+                // For chairperson, include both activities and learnings
+                if (!empty($report['activities'])) {
+                    $parts[] = 'Activities: ' . trim($report['activities']);
+                }
+                if (!empty($report['learnings'])) {
+                    $parts[] = 'Learnings: ' . trim($report['learnings']);
+                }
+            }
+        }
+        
+        return implode(' ', $parts);
     }
 }
 

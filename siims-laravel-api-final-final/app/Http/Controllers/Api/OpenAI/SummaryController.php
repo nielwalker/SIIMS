@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\OpenAI;
 use App\Http\Controllers\Controller;
 use App\Services\OpenAI\OpenAIService;
 use App\Services\OpenAI\PromptBuilder;
+use App\Services\OpenAI\SummaryEvaluationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -18,11 +19,16 @@ class SummaryController extends Controller
 {
     protected $openAIService;
     protected $promptBuilder;
+    protected $evaluationService;
 
-    public function __construct(OpenAIService $openAIService, PromptBuilder $promptBuilder)
-    {
+    public function __construct(
+        OpenAIService $openAIService,
+        PromptBuilder $promptBuilder,
+        SummaryEvaluationService $evaluationService
+    ) {
         $this->openAIService = $openAIService;
         $this->promptBuilder = $promptBuilder;
+        $this->evaluationService = $evaluationService;
     }
 
     /**
@@ -117,9 +123,34 @@ class SummaryController extends Controller
                 
                 Log::info('OpenAI generated summary', ['summary' => $cleanSummary]);
                 
+                // EVALUATION: Compare OpenAI summary against raw database data
+                // Build reference text from raw activities and learnings (this is what we're comparing against)
+                $referenceText = $this->buildReferenceText($activities, $learnings, $assessment);
+                
+                // Debug: Log that evaluation is starting
+                Log::info('Starting summary evaluation', [
+                    'summary_length' => strlen($cleanSummary),
+                    'reference_length' => strlen($referenceText)
+                ]);
+                
+                // Evaluate the generated summary against the reference text
+                $evaluationResults = $this->evaluationService->evaluate($cleanSummary, $referenceText);
+                
+                // Log evaluation results to console and Laravel log
+                $this->evaluationService->logResults($evaluationResults, 'Chairperson OpenAI Summary');
+                
+                // Debug: Confirm evaluation completed
+                Log::info('Summary evaluation completed', [
+                    'rouge1_f1' => $evaluationResults['rouge1']['f1'],
+                    'rouge2_f1' => $evaluationResults['rouge2']['f1'],
+                    'rougeL_f1' => $evaluationResults['rougeL']['f1'],
+                    'bertScore' => $evaluationResults['bertScore']
+                ]);
+                
                 return response()->json([
                     'summary' => $cleanSummary,
-                    'success' => true
+                    'success' => true,
+                    'evaluation' => $evaluationResults // Include evaluation in response for debugging
                 ]);
             } else {
                 Log::warning('OpenAI failed', ['error' => $response['error'] ?? 'Unknown error']);
@@ -144,6 +175,37 @@ class SummaryController extends Controller
                 'openai_unavailable' => true
             ], 503);
         }
+    }
+    
+    /**
+     * Build reference text from raw database data
+     * This is the "ground truth" text that we compare the OpenAI summary against
+     * 
+     * @param array $activities Raw activities from database
+     * @param array $learnings Raw learnings from database
+     * @param string $assessment Assessment text (if any)
+     * @return string Combined reference text
+     */
+    private function buildReferenceText(array $activities, array $learnings, string $assessment): string
+    {
+        $parts = [];
+        
+        // Add activities
+        if (!empty($activities)) {
+            $parts[] = 'Activities: ' . implode(' ', $activities);
+        }
+        
+        // Add learnings
+        if (!empty($learnings)) {
+            $parts[] = 'Learnings: ' . implode(' ', $learnings);
+        }
+        
+        // Add assessment if provided
+        if (!empty($assessment)) {
+            $parts[] = 'Assessment: ' . $assessment;
+        }
+        
+        return implode(' ', $parts);
     }
 }
 

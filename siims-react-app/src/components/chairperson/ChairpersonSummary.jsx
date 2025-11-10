@@ -160,11 +160,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           .map((r) => `${stripHtml(r.tasks || r.task || r.activities || "")} ${stripHtml(r.learnings || r.learning || "")}`)
           .join(" ");
         
-        console.log('Raw text for PO scoring:', text.substring(0, 200) + '...');
-        console.log('Week entries found:', weekEntries.length);
-        if (weekEntries.length > 0) {
-          console.log('Sample entry:', weekEntries[0]);
-        }
         
         // Reference Keywords/Verbs for PO Matching (Guidance Only)
         const keywordSets = [
@@ -200,20 +195,16 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           ["filipino", "culture", "heritage", "values", "historical", "cultural heritage", "tradition", "filipino culture"],
         ];
         const lower = String(text || "").toLowerCase();
-        console.log('Text to analyze:', lower);
         
         const counts = keywordSets.map((set, index) => {
           let c = 0; 
           for (const kw of set) { 
             if (lower.includes(kw)) {
-              console.log(`PO${index + 1}: Found keyword "${kw}" in text`);
               c++; 
             }
           } 
           return c;
         });
-        
-        console.log('Keyword counts:', counts);
         const totalKeywordCount = counts.reduce((a, b) => a + b, 0) || 1; // avoid div/0
 
         // Compute keyword-only percentages (unrounded used for weighted blend; round only final)
@@ -257,13 +248,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           return allAIPOs.has(code) ? 1 : 0;
         });
         
-        console.log('Hybrid AI PO analysis:', {
-          pos_hit_count: Array.isArray(posHitFromBackend) ? posHitFromBackend.length : 0,
-          poContextHit_count: Array.isArray(poContextHitFromBackend) ? poContextHitFromBackend.length : 0,
-          poWordHit_count: Array.isArray(poWordHitFromBackend) ? poWordHitFromBackend.length : 0,
-          allAIPOs: Array.from(allAIPOs),
-          aiScores: aiScores
-        });
 
         // Check if we have OpenAI data
         const hasAnyAIScore = aiScores.some((v) => v > 0);
@@ -360,10 +344,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           }
         }
         
-        console.log('Graph scores aligned with pos_hit:', {
-          confirmedPOs: Array.from(confirmedPOsFromPosHit),
-          finalScores: finalScores
-        });
 
         // Calculate word-based and context-based hit percentages for display
         const wordBasedPOs = new Set();
@@ -395,16 +375,7 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
         const wordBasedPercent = totalConfirmedPOs > 0 ? Math.round((wordBasedCount / totalConfirmedPOs) * 100) : 0;
         const contextBasedPercent = totalConfirmedPOs > 0 ? Math.round((contextBasedCount / totalConfirmedPOs) * 100) : 0;
         
-        console.log('Total keyword matches:', totalKeywordCount, 'KeywordScore% (unrounded):', keywordScore, 'aiScores(0-1):', aiScores, 'Final%:', finalScores);
-        console.log('PO Analysis Contribution:', {
-          totalConfirmedPOs,
-          wordBasedCount,
-          contextBasedCount,
-          wordBasedPercent: `${wordBasedPercent}%`,
-          contextBasedPercent: `${contextBasedPercent}%`
-        });
         setScores(finalScores);
-        console.log('PO Scores computed (hybrid):', finalScores, 'Total entries:', weekEntries.length, 'Students:', filteredStudents.length);
         
         // Store contribution percentages for display
         setWordBasedPercent(wordBasedPercent);
@@ -416,11 +387,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
         // ONLY OpenAI's response (from backend) should determine which POs are achieved
         // Keyword matching is ONLY used for hybrid scoring (graph visualization)
         // hitList and notHitList should ONLY come from OpenAI's pos_hit and pos_not_hit arrays
-        if (!skipHitLists) {
-          console.log('Skipping hardcoded hit/not-hit list generation - only OpenAI determines PO achievements');
-        } else {
-          console.log('Skipping hitList/notHitList update - skipHitLists is true (backend provided data from OpenAI)');
-        }
       };
 
       // Try backend summary first (Chair-specific route). If it fails, fall back to client-side.
@@ -456,7 +422,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
         
         if (resp.ok) {
           const data = await resp.json();
-          console.log('Backend response:', data);
           
           // Check if OpenAI is unavailable
           if (data?.openai_unavailable || data?.error === 'OpenAI is not available right now') {
@@ -501,40 +466,32 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           // pos_hit: Primary source - complete PO analysis from OpenAI
           if (Array.isArray(data?.pos_hit)) {
             posHitFromBackend = data.pos_hit;
-            console.log('Captured pos_hit from backend for hybrid scoring:', posHitFromBackend);
           }
           
           // poContextHit: Contextual PO hits from OpenAI
           if (Array.isArray(data?.poContextHit)) {
             poContextHitFromBackend = data.poContextHit;
-            console.log('Captured poContextHit from backend for hybrid scoring:', poContextHitFromBackend);
           }
           
           // poWordHit: Keyword-based PO hits from OpenAI
           if (Array.isArray(data?.poWordHit)) {
             poWordHitFromBackend = data.poWordHit;
-            console.log('Captured poWordHit from backend for hybrid scoring:', poWordHitFromBackend);
           }
           
           // Extract AI-generated recommendations from backend
           if (data?.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
             setRecommendations(data.recommendations);
-            console.log('Loaded AI recommendations from backend:', data.recommendations);
           }
           
           // Extract POS hit/not-hit arrays from backend for consistent display (BEFORE handling overall case)
           // First, try pos_hit array
           let hits = [];
-          console.log('Raw backend data.pos_hit:', data?.pos_hit);
-          console.log('Raw backend data.poContextHit:', data?.poContextHit);
-          console.log('Raw backend data.poWordHit:', data?.poWordHit);
           
           if (Array.isArray(data?.pos_hit) && data.pos_hit.length > 0) {
             hits = data.pos_hit.map(item => ({
               po: typeof item === 'string' ? item : (item?.po || ''),
               reason: typeof item === 'object' && item?.reason ? item.reason : 'Evidence found in activities and learnings'
             })).filter(item => item.po && item.po.trim() !== '');
-            console.log('Extracted hits from pos_hit:', hits);
           }
           
           // Fallback: If pos_hit is empty but poContextHit exists (from OpenAI), use that
@@ -547,7 +504,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
                 reason: 'Achieved through contextual activities and practical application of knowledge (OpenAI analysis)'
               };
             }).filter(item => item.po && item.po.trim() !== '');
-            console.log('Using poContextHit from OpenAI response as fallback for hits:', hits);
           }
           
           // Fallback: If still empty but poWordHit exists (from OpenAI), use that
@@ -560,7 +516,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
                 reason: 'Achieved through keyword matching and explicit evidence in activities (OpenAI analysis)'
               };
             }).filter(item => item.po && item.po.trim() !== '');
-            console.log('Using poWordHit from OpenAI response as fallback for hits:', hits);
           }
           
           // Set hitList immediately - this is the source of truth from backend
@@ -568,10 +523,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           // IMPORTANT: Display ALL POs from backend - NO LIMITS
           if (hits.length > 0) {
             setHitList(hits); // Display ALL hits - no filtering or limiting
-            console.log('✅ Set hitList from backend data (ALL POs):', hits.length, 'items:', hits);
-          } else {
-            console.log('⚠️ No hits found in backend data - pos_hit, poContextHit, and poWordHit are all empty or missing');
-            // Keep existing hitList if we have one, don't overwrite with empty array
           }
           
           let notHits = [];
@@ -618,22 +569,17 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
                 reason: defaultReasons[po] || `No evidence of achieving ${po} based on activities and learnings.`
               });
             });
-            
-            console.log(`Added ${missingPOs.length} missing POs to notHitList:`, missingPOs);
           }
           
           setNotHitList(notHits);
-          console.log('Set notHitList from backend data (all 15 POs accounted for):', notHits.length, 'items');
           
           // Compute scores for the graph ONLY (don't update hit/not-hit lists)
           // CRITICAL: Always pass skipHitLists=true when we have backend data to prevent overwriting
-          console.log('Calling computeScores with skipHitLists=true (preserving backend hitList)');
           await computeScores(true); // Force skipHitLists=true to preserve backend data
           
           // Extract AI-generated recommendations from backend
           if (data?.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
             setRecommendations(data.recommendations);
-            console.log('Loaded AI recommendations from backend:', data.recommendations);
           }
           
           if (data?.summary) {
@@ -651,7 +597,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
 
             if (data?.keywordScores && Array.isArray(data.keywordScores)) {
               setScores(data.keywordScores);
-              console.log('Using backend PO scores:', data.keywordScores);
             } else {
               // CRITICAL: Pass skipHitLists=true to preserve backend hitList data
               await computeScores(true);
@@ -660,7 +605,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           }
         }
       } catch (err) {
-        console.log('Backend API failed, falling back to client-side:', err);
       }
 
       // Compute summary client-side from students' weekly entries under this coordinator
@@ -726,10 +670,6 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
             } catch {}
           }
           
-          // If we have students, create a comprehensive summary
-          if (filteredStudents.length > 0) {
-            console.log('Creating client-side overall summary for', filteredStudents.length, 'students');
-          }
         }
 
         // 2) Fetch weekly entries per student (parallel)

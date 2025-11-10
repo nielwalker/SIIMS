@@ -2,16 +2,21 @@
 
 namespace App\Services;
 
+use App\Services\OpenAI\OpenAIService;
+use App\Services\OpenAI\PromptBuilder;
 use App\Services\OpenAI\ChairSummaryService;
-use App\Services\NLPSummarizationService;
 
 class ChairSummaryAdapter
 {
-    protected $nlpService;
+    protected $openAIService;
+    protected $promptBuilder;
 
-    public function __construct(NLPSummarizationService $nlpService)
-    {
-        $this->nlpService = $nlpService;
+    public function __construct(
+        OpenAIService $openAIService,
+        PromptBuilder $promptBuilder
+    ) {
+        $this->openAIService = $openAIService;
+        $this->promptBuilder = $promptBuilder;
     }
 
     private function normalizeSummary(?string $raw): string
@@ -236,28 +241,48 @@ class ChairSummaryAdapter
     {
         $clean = trim(preg_replace('/\s+/', ' ', strip_tags($text)) ?? '');
         $summary = '';
-        $usedGPT = false; // Always false - using NLP for summary, OpenAI only for PO analysis
-        $rawContent = null;
+        $usedGPT = false;
 
-        // Generate summary using NLP (faster, no API dependency)
-        if (!empty($clean)) {
+        // Generate summary using OpenAI
+        if (!empty($clean) && $this->openAIService->isAvailable()) {
             try {
-                $summary = $this->nlpService->summarizeForChairperson($clean, $week);
+                $prompt = $this->promptBuilder->buildSummaryPrompt($activities, $learnings, '', 'overall_summary');
+                $response = $this->openAIService->call($prompt, [
+                    'model' => 'gpt-4o-mini',
+                    'max_tokens' => 3000,
+                    'temperature' => 0.2,
+                    'timeout' => 90,
+                ]);
+                
+                if ($response['success'] && $response['content']) {
+                    $summary = $this->openAIService->cleanText($response['content']);
+                    if ($week) {
+                        $summary = $this->openAIService->enforceWeekPrefix($summary, "For week {$week}, those students ");
+                    } else {
+                        $summary = $this->openAIService->enforceWeekPrefix($summary, 'For this week, those students ');
+                    }
+                    $usedGPT = true;
+                } else {
+                    \Log::warning('OpenAI summarization failed in ChairSummaryAdapter', ['error' => $response['error'] ?? 'Unknown error']);
+                    $summary = $clean ?: '';
+                }
             } catch (\Throwable $e) {
-                \Log::error('NLP Summarization Error in ChairSummaryAdapter:', ['message' => $e->getMessage()]);
+                \Log::error('OpenAI Summarization Error in ChairSummaryAdapter:', ['message' => $e->getMessage()]);
                 $summary = $clean ?: '';
             }
+        } else {
+            $summary = $clean ?: '';
         }
 
-        // Use OpenAI service ONLY for PO analysis (not for summary - summary is already generated with NLP above)
+        // Use OpenAI service for PO analysis
         if ($useGPT && !empty($clean)) {
             try {
                 $chairSummaryService = app(ChairSummaryService::class);
                 $result = $chairSummaryService->generateSummaryWithPOAnalysis($clean, $week, $activities, $learnings);
 
-                // Replace OpenAI summary with NLP-generated summary (ensure NLP summary is used)
+                // Use OpenAI-generated summary (already set above)
                 if (isset($result['summary'])) {
-                    $result['summary'] = $summary; // Use NLP summary instead
+                    $result['summary'] = $summary; // Use OpenAI summary
                 }
 
                 // If OpenAI was used successfully for PO analysis, return the merged result
@@ -269,7 +294,7 @@ class ChairSummaryAdapter
                     if (!empty($learnings)) {
                         $result['corrected_learnings'] = $learnings;
                     }
-                    // Ensure summary is set (NLP-generated)
+                    // Ensure summary is set (OpenAI-generated)
                     $result['summary'] = $summary;
                     return $result;
                 }
@@ -282,12 +307,12 @@ class ChairSummaryAdapter
             }
             
             // If we reach here, OpenAI is not available for PO analysis
-            // Return NLP summary with empty PO analysis
+            // Return OpenAI summary with empty PO analysis
             return [
                 'error' => 'OpenAI is not available right now',
                 'openai_unavailable' => true,
-                'summary' => $summary, // NLP-generated summary
-                'usedGPT' => false,
+                'summary' => $summary, // OpenAI-generated summary
+                'usedGPT' => $usedGPT,
                 'posHitExplanation' => '',
                 'posNotHitExplanation' => '',
                 'poWordHit' => [],
@@ -298,10 +323,10 @@ class ChairSummaryAdapter
             ];
         }
         
-        // If not using GPT, return NLP summary with empty PO analysis
+        // If not using GPT, return OpenAI summary with empty PO analysis
         return [
-            'summary' => $summary, // NLP-generated summary
-            'usedGPT' => false,
+            'summary' => $summary, // OpenAI-generated summary
+            'usedGPT' => $usedGPT,
             'posHitExplanation' => '',
             'posNotHitExplanation' => '',
             'poWordHit' => [],

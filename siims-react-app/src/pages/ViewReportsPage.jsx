@@ -344,11 +344,11 @@ const ViewReportsPage = ({ authorizeRole }) => {
         const resp = await axiosClient.post("/api/v1/summary", {
           studentId: selectedStudentId,
           week: selectedWeek,
-          useGPT: false, // NLP is faster, no need for OpenAI
+          useGPT: true, // Use OpenAI for summarization
           analysisType: "coordinator",
           isOverall: false,
         }, {
-          timeout: 30000, // 30 seconds should be enough for NLP summarization
+          timeout: 30000, // 30 seconds should be enough for OpenAI summarization
         });
         const data = resp?.data || {};
         const cleanHtml = (txt) => String(txt || "")
@@ -436,7 +436,6 @@ const ViewReportsPage = ({ authorizeRole }) => {
           setPoError("PO Analysis is currently unavailable. Please try again later.");
         }
       } catch (e) {
-        console.error("Error fetching PO analysis:", e);
         setPoError("Failed to load PO analysis. Please try again.");
         setPosHit([]);
         setPosNotHit([]);
@@ -802,7 +801,6 @@ const ViewReportsPage = ({ authorizeRole }) => {
                                   });
                                   alert('Request sent to the student successfully.');
                                 } catch (e) {
-                                  console.error(e);
                                   alert('Failed to send request.');
                                 }
                               }}

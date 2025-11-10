@@ -227,7 +227,7 @@ JSON RESPONSE REQUIREMENTS:
 - Start with { and end with }
 - pos_hit MUST be an array of objects: [{\"po\": \"PO5\", \"reason\": \"...\"}, ...]
 - Do NOT return empty pos_hit array if activities/learnings exist
-- NOTE: Summary generation is handled separately by NLP - DO NOT generate summaries
+- NOTE: Summary generation is handled separately by OpenAI summarization - DO NOT generate summaries
 - ALL keys must be present: corrected_activities, corrected_learnings, pos_hit, pos_not_hit, po_word_hit, po_context_hit, recommendations
 
 OUTPUT FORMAT (MANDATORY - RETURN THIS EXACT JSON STRUCTURE):

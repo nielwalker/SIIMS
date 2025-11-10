@@ -7,9 +7,17 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Services\ChairSummaryAdapter;
+use App\Services\OpenAI\SummaryEvaluationService;
 
 class ChairSummaryController extends Controller
 {
+    protected $evaluationService;
+
+    public function __construct(SummaryEvaluationService $evaluationService)
+    {
+        $this->evaluationService = $evaluationService;
+    }
+
     public function generate(Request $request, ChairSummaryAdapter $adapter): JsonResponse
     {
         $coordinatorId = $request->input('coordinatorId');
@@ -195,6 +203,58 @@ class ChairSummaryController extends Controller
         
         \Log::info('ChairSummary: Result from adapter:', $result);
 
+        // EVALUATION: Compare summary against raw database data
+        // Build reference text from raw activities and learnings
+        $summary = $result['summary'] ?? '';
+        $referenceText = $this->buildReferenceText($activities, $learnings);
+        
+        // Debug: Log evaluation preparation
+        \Log::info('ChairSummary: Evaluation preparation', [
+            'has_summary' => !empty($summary),
+            'summary_length' => strlen($summary),
+            'activities_count' => count($activities),
+            'learnings_count' => count($learnings),
+            'reference_length' => strlen($referenceText),
+            'has_reference' => !empty($referenceText)
+        ]);
+        
+        // Only evaluate if we have both summary and reference text
+        $evaluationResults = null;
+        if (!empty($summary) && !empty($referenceText)) {
+            try {
+                \Log::info('ChairSummary: Starting summary evaluation', [
+                    'summary_length' => strlen($summary),
+                    'reference_length' => strlen($referenceText)
+                ]);
+                
+                $evaluationResults = $this->evaluationService->evaluate($summary, $referenceText);
+                
+                // Log evaluation results to console and Laravel log
+                $this->evaluationService->logResults($evaluationResults, 'Chairperson Summary (ChairSummaryController)');
+                
+                \Log::info('ChairSummary: Evaluation completed', [
+                    'rouge1_f1' => $evaluationResults['rouge1']['f1'],
+                    'rouge2_f1' => $evaluationResults['rouge2']['f1'],
+                    'rougeL_f1' => $evaluationResults['rougeL']['f1'],
+                    'bertScore' => $evaluationResults['bertScore']
+                ]);
+            } catch (\Throwable $e) {
+                \Log::error('ChairSummary: Evaluation error', [
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+            }
+        } else {
+            \Log::warning('ChairSummary: Evaluation skipped', [
+                'reason' => empty($summary) ? 'Empty summary' : 'Empty reference text',
+                'summary_empty' => empty($summary),
+                'reference_empty' => empty($referenceText)
+            ]);
+        }
+        
+        // Add evaluation results to response (even if null, so frontend knows evaluation was attempted)
+        $result['evaluation'] = $evaluationResults;
+
         // Activities and learnings are already extracted and stored in result by adapter
         // For "overall" week, ensure summary format
         if ($week === null || $week === 0) {
@@ -377,6 +437,30 @@ class ChairSummaryController extends Controller
         // Normalize whitespace
         $text = preg_replace('/\s+/', ' ', trim($text));
         return $text;
+    }
+    
+    /**
+     * Build reference text from raw database data for evaluation
+     * 
+     * @param array $activities Raw activities from database
+     * @param array $learnings Raw learnings from database
+     * @return string Combined reference text
+     */
+    private function buildReferenceText(array $activities, array $learnings): string
+    {
+        $parts = [];
+        
+        // Add activities
+        if (!empty($activities)) {
+            $parts[] = 'Activities: ' . implode(' ', $activities);
+        }
+        
+        // Add learnings
+        if (!empty($learnings)) {
+            $parts[] = 'Learnings: ' . implode(' ', $learnings);
+        }
+        
+        return implode(' ', $parts);
     }
 }
 
