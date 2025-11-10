@@ -348,7 +348,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
           analysisType: "coordinator",
           isOverall: false,
         }, {
-          timeout: 30000, // 30 seconds should be enough for OpenAI summarization
+          timeout: 90000, // 90 seconds timeout for OpenAI summarization (can be slow)
         });
         const data = resp?.data || {};
         const cleanHtml = (txt) => String(txt || "")
@@ -363,7 +363,12 @@ const ViewReportsPage = ({ authorizeRole }) => {
         setStudentSummary(s || "No data available.");
         // Coordinator: do not compute or display recommendations
       } catch (e) {
-        setStudentSummary("No data available.");
+        // Check if it's a timeout error
+        if (e.code === 'ECONNABORTED' || e.message?.includes('timeout')) {
+          setStudentSummary("Summary generation is taking longer than expected. Please try again.");
+        } else {
+          setStudentSummary("No data available.");
+        }
       } finally {
         setSummaryLoading(false);
       }

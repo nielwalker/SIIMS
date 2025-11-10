@@ -116,6 +116,19 @@ class ChairSummaryController extends Controller
             // Use cached results - consistent across refreshes
             \Log::info('ChairSummary: Using cached PO analysis for hash: ' . substr($dataHash, 0, 8) . '...');
             
+            // Use current activities/learnings for evaluation (not cached ones)
+            // This ensures evaluation is always based on current data
+            // Ensure activities and learnings are arrays
+            $resultActivities = is_array($activities) ? $activities : [];
+            $resultLearnings = is_array($learnings) ? $learnings : [];
+            
+            \Log::info('ChairSummary: Cached data retrieved', [
+                'has_summary' => !empty($cached->summary),
+                'activities_count' => count($resultActivities),
+                'learnings_count' => count($resultLearnings),
+                'coordinator_id' => $coordinatorId
+            ]);
+            
             $result = [
                 'summary' => $cached->summary,
                 'pos_hit' => json_decode($cached->pos_hit, true) ?? [],
@@ -123,8 +136,8 @@ class ChairSummaryController extends Controller
                 'poContextHit' => json_decode($cached->po_context_hit, true) ?? [],
                 'poWordHit' => json_decode($cached->po_word_hit, true) ?? [],
                 'recommendations' => json_decode($cached->recommendations, true) ?? [],
-                'activities' => json_decode($cached->activities, true) ?? $activities,
-                'learnings' => json_decode($cached->learnings, true) ?? $learnings,
+                'activities' => $resultActivities, // Always use current activities for evaluation
+                'learnings' => $resultLearnings,   // Always use current learnings for evaluation
                 'cached' => true,
             ];
         } else {
@@ -203,56 +216,116 @@ class ChairSummaryController extends Controller
         
         \Log::info('ChairSummary: Result from adapter:', $result);
 
-        // EVALUATION: Compare summary against raw database data
-        // Build reference text from raw activities and learnings
+        // EVALUATION: Always run evaluation, even with cached data
+        // This ensures evaluation metrics are always up-to-date and displayed
+        // Build reference text from current activities and learnings (not cached)
         $summary = $result['summary'] ?? '';
-        $referenceText = $this->buildReferenceText($activities, $learnings);
+        
+        // Use current activities/learnings from result (which are always current, not cached)
+        // Ensure they are arrays (they should be, but handle edge cases)
+        $currentActivities = $result['activities'] ?? $activities;
+        $currentLearnings = $result['learnings'] ?? $learnings;
+        
+        // Convert to arrays if they're JSON strings (from cache)
+        if (is_string($currentActivities)) {
+            $decoded = json_decode($currentActivities, true);
+            $currentActivities = is_array($decoded) ? $decoded : [$currentActivities];
+        }
+        if (is_string($currentLearnings)) {
+            $decoded = json_decode($currentLearnings, true);
+            $currentLearnings = is_array($decoded) ? $decoded : [$currentLearnings];
+        }
+        
+        // Ensure they are arrays
+        if (!is_array($currentActivities)) {
+            $currentActivities = !empty($currentActivities) ? [$currentActivities] : [];
+        }
+        if (!is_array($currentLearnings)) {
+            $currentLearnings = !empty($currentLearnings) ? [$currentLearnings] : [];
+        }
+        
+        $referenceText = $this->buildReferenceText($currentActivities, $currentLearnings);
         
         // Debug: Log evaluation preparation
         \Log::info('ChairSummary: Evaluation preparation', [
             'has_summary' => !empty($summary),
             'summary_length' => strlen($summary),
-            'activities_count' => count($activities),
-            'learnings_count' => count($learnings),
+            'summary_preview' => substr($summary, 0, 100),
+            'activities_count' => is_array($currentActivities) ? count($currentActivities) : 0,
+            'activities_type' => gettype($currentActivities),
+            'learnings_count' => is_array($currentLearnings) ? count($currentLearnings) : 0,
+            'learnings_type' => gettype($currentLearnings),
             'reference_length' => strlen($referenceText),
-            'has_reference' => !empty($referenceText)
+            'reference_preview' => substr($referenceText, 0, 100),
+            'has_reference' => !empty($referenceText),
+            'using_cached' => isset($result['cached']) && $result['cached'],
+            'coordinator_id' => $coordinatorId,
+            'section_id' => $sectionId,
+            'week' => $week
         ]);
         
-        // Only evaluate if we have both summary and reference text
+        // Always evaluate if we have both summary and reference text
         $evaluationResults = null;
         if (!empty($summary) && !empty($referenceText)) {
             try {
                 \Log::info('ChairSummary: Starting summary evaluation', [
                     'summary_length' => strlen($summary),
-                    'reference_length' => strlen($referenceText)
+                    'reference_length' => strlen($referenceText),
+                    'coordinator_id' => $coordinatorId,
+                    'section_id' => $sectionId,
+                    'week' => $week
+                ]);
+                
+                \Log::info('ChairSummary: Calling evaluation service', [
+                    'summary_length' => strlen($summary),
+                    'reference_length' => strlen($referenceText),
+                    'coordinator_id' => $coordinatorId
                 ]);
                 
                 $evaluationResults = $this->evaluationService->evaluate($summary, $referenceText);
+                
+                \Log::info('ChairSummary: Evaluation service returned', [
+                    'has_results' => !empty($evaluationResults),
+                    'has_rouge1' => isset($evaluationResults['rouge1']),
+                    'has_rouge2' => isset($evaluationResults['rouge2']),
+                    'has_rougeL' => isset($evaluationResults['rougeL']),
+                    'has_bertScore' => isset($evaluationResults['bertScore']),
+                    'coordinator_id' => $coordinatorId
+                ]);
                 
                 // Log evaluation results to console and Laravel log
                 $this->evaluationService->logResults($evaluationResults, 'Chairperson Summary (ChairSummaryController)');
                 
                 \Log::info('ChairSummary: Evaluation completed', [
-                    'rouge1_f1' => $evaluationResults['rouge1']['f1'],
-                    'rouge2_f1' => $evaluationResults['rouge2']['f1'],
-                    'rougeL_f1' => $evaluationResults['rougeL']['f1'],
-                    'bertScore' => $evaluationResults['bertScore']
+                    'rouge1_f1' => $evaluationResults['rouge1']['f1'] ?? 'N/A',
+                    'rouge2_f1' => $evaluationResults['rouge2']['f1'] ?? 'N/A',
+                    'rougeL_f1' => $evaluationResults['rougeL']['f1'] ?? 'N/A',
+                    'bertScore' => $evaluationResults['bertScore'] ?? 'N/A',
+                    'coordinator_id' => $coordinatorId,
+                    'section_id' => $sectionId,
+                    'week' => $week
                 ]);
             } catch (\Throwable $e) {
                 \Log::error('ChairSummary: Evaluation error', [
                     'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
+                    'trace' => $e->getTraceAsString(),
+                    'coordinator_id' => $coordinatorId,
+                    'section_id' => $sectionId,
+                    'week' => $week
                 ]);
             }
         } else {
             \Log::warning('ChairSummary: Evaluation skipped', [
                 'reason' => empty($summary) ? 'Empty summary' : 'Empty reference text',
                 'summary_empty' => empty($summary),
-                'reference_empty' => empty($referenceText)
+                'reference_empty' => empty($referenceText),
+                'coordinator_id' => $coordinatorId,
+                'section_id' => $sectionId,
+                'week' => $week
             ]);
         }
         
-        // Add evaluation results to response (even if null, so frontend knows evaluation was attempted)
+        // Always add evaluation results to response (even if null, so frontend knows evaluation was attempted)
         $result['evaluation'] = $evaluationResults;
 
         // Activities and learnings are already extracted and stored in result by adapter
@@ -446,18 +519,34 @@ class ChairSummaryController extends Controller
      * @param array $learnings Raw learnings from database
      * @return string Combined reference text
      */
-    private function buildReferenceText(array $activities, array $learnings): string
+    private function buildReferenceText($activities, $learnings): string
     {
         $parts = [];
         
+        // Ensure activities is an array
+        if (!is_array($activities)) {
+            $activities = is_string($activities) ? [$activities] : [];
+        }
+        
+        // Ensure learnings is an array
+        if (!is_array($learnings)) {
+            $learnings = is_string($learnings) ? [$learnings] : [];
+        }
+        
         // Add activities
         if (!empty($activities)) {
-            $parts[] = 'Activities: ' . implode(' ', $activities);
+            $activitiesText = array_filter(array_map('trim', $activities));
+            if (!empty($activitiesText)) {
+                $parts[] = 'Activities: ' . implode(' ', $activitiesText);
+            }
         }
         
         // Add learnings
         if (!empty($learnings)) {
-            $parts[] = 'Learnings: ' . implode(' ', $learnings);
+            $learningsText = array_filter(array_map('trim', $learnings));
+            if (!empty($learningsText)) {
+                $parts[] = 'Learnings: ' . implode(' ', $learningsText);
+            }
         }
         
         return implode(' ', $parts);

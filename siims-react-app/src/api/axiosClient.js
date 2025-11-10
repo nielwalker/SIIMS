@@ -84,8 +84,12 @@ axiosClient.interceptors.response.use(
           );
       }
     } else {
-      // If no response from server (e.g., network error)
-      showFailedAlert("Network error. Please check your internet connection.");
+      // If no response from server (e.g., network error, timeout)
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        showFailedAlert("Request timeout. The server is taking too long to respond. Please try again.");
+      } else {
+        showFailedAlert("Network error. Please check your internet connection.");
+      }
     }
 
     return Promise.reject(error);

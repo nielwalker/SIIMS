@@ -74,30 +74,18 @@ class SummaryController extends Controller
             })
             ->toArray();
 
-        // Build combined text: for coordinator summaries, use learnings-only with simple de-duplication
-        if ($analysisType === 'coordinator') {
-            // Simplified de-duplication: just use unique learnings, NLP will handle summarization
-            $learnings = collect($reports)
-                ->map(fn($r) => trim((string)($r['learnings'] ?? '')))
-                ->filter()
-                ->unique()
-                ->values()
-                ->all();
-            
-            $combined = implode(' ', $learnings);
-        } else {
-            $combined = collect($reports)
-                ->map(function ($r) {
-                    $txt = trim(($r['activities'] ?? '') . ' ' . ($r['learnings'] ?? ''));
-                    $txt = preg_replace('/\s+/', ' ', $txt);
-                    if ($txt && !preg_match('/[.!?]$/', $txt)) {
-                        $txt .= '.';
-                    }
-                    return $txt;
-                })
-                ->filter()
-                ->implode(' ');
-        }
+        // Build combined text: include both activities and learnings for all analysis types
+        $combined = collect($reports)
+            ->map(function ($r) {
+                $txt = trim(($r['activities'] ?? '') . ' ' . ($r['learnings'] ?? ''));
+                $txt = preg_replace('/\s+/', ' ', $txt);
+                if ($txt && !preg_match('/[.!?]$/', $txt)) {
+                    $txt .= '.';
+                }
+                return $txt;
+            })
+            ->filter()
+            ->implode(' ');
 
         $keywordSets = [
             ['math', 'mathematics', 'science', 'algorithm', 'compute', 'analysis'],
@@ -205,19 +193,12 @@ class SummaryController extends Controller
         $parts = [];
         
         foreach ($reports as $report) {
-            // For coordinator, focus on learnings
-            if ($analysisType === 'coordinator') {
-                if (!empty($report['learnings'])) {
-                    $parts[] = trim($report['learnings']);
-                }
-            } else {
-                // For chairperson, include both activities and learnings
-                if (!empty($report['activities'])) {
-                    $parts[] = 'Activities: ' . trim($report['activities']);
-                }
-                if (!empty($report['learnings'])) {
-                    $parts[] = 'Learnings: ' . trim($report['learnings']);
-                }
+            // Include both activities and learnings for all analysis types
+            if (!empty($report['activities'])) {
+                $parts[] = 'Activities: ' . trim($report['activities']);
+            }
+            if (!empty($report['learnings'])) {
+                $parts[] = 'Learnings: ' . trim($report['learnings']);
             }
         }
         

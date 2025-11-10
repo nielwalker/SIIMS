@@ -87,15 +87,10 @@ class SummaryAdapter
         if ($clean && $useGPT && $this->openAIService->isAvailable()) {
             try {
                 // Prepare activities and learnings for prompt building
-                // For coordinator, focus on learnings; for chairperson, use both
+                // Both coordinator and chairperson use activities and learnings
+                // The combined text already contains both, so we pass it as learnings
                 $activities = [];
-                $learnings = [];
-                
-                if ($analysisType === 'coordinator') {
-                    $learnings = [$clean];
-                } else {
-                    $learnings = [$clean];
-                }
+                $learnings = [$clean]; // Combined text includes both activities and learnings
                 
                 // Build prompt based on analysis type
                 if ($analysisType === 'coordinator') {
