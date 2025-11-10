@@ -16,7 +16,6 @@ use App\Models\Application;
 use App\Models\WeeklyEntry;
 use App\Models\WorkType;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\CoordinatorOpenAISummaryController;
 
 /* Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
 
@@ -289,8 +288,5 @@ Route::prefix('/v1')->group(function () {
         require base_path('routes/coordinator.php');
         // Summary Routes
         require base_path('routes/summary.php');
-
-        // OpenAI Summarize / Weekly Tasks endpoint (supports POST and GET)
-        Route::match(['POST','GET'],'/summary/openai-summarize',[CoordinatorOpenAISummaryController::class,'summarize']);
     });
 });

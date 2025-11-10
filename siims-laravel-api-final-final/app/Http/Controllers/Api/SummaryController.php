@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use App\Services\SummaryAdapter;
 
 class SummaryController extends Controller
@@ -66,50 +65,17 @@ class SummaryController extends Controller
             })
             ->toArray();
 
-        // Build combined text: for coordinator summaries, use learnings-only with de-duplication
+        // Build combined text: for coordinator summaries, use learnings-only with simple de-duplication
         if ($analysisType === 'coordinator') {
-            $normalize = function (string $s): string {
-                $s = strip_tags($s);
-                $s = preg_replace('/[^\w\s\.,!?]/u', ' ', $s) ?? '';
-                $s = preg_replace('/\s+/', ' ', $s) ?? '';
-                return trim(mb_strtolower($s));
-            };
-            $similar = function (string $a, string $b): float {
-                $wa = array_values(array_unique(array_filter(preg_split('/\s+/', $a) ?: [], fn($w) => mb_strlen($w) > 2)));
-                $wb = array_values(array_unique(array_filter(preg_split('/\s+/', $b) ?: [], fn($w) => mb_strlen($w) > 2)));
-                if (empty($wa) && empty($wb)) return 0.0;
-                $inter = array_intersect($wa, $wb);
-                $union = array_unique(array_merge($wa, $wb));
-                return count($union) === 0 ? 0.0 : count($inter) / count($union);
-            };
-            $sentences = collect($reports)
-                ->map(fn($r) => (string)($r['learnings'] ?? ''))
+            // Simplified de-duplication: just use unique learnings, NLP will handle summarization
+            $learnings = collect($reports)
+                ->map(fn($r) => trim((string)($r['learnings'] ?? '')))
                 ->filter()
-                ->map(fn($t) => preg_split('/[.!?]+/', $t) ?: [])
-                ->flatten()
-                ->map(fn($s) => trim($s))
-                ->filter(fn($s) => mb_strlen($s) > 5)
-                ->map(fn($s) => $normalize($s))
+                ->unique()
                 ->values()
                 ->all();
-
-            $compressed = [];
-            foreach ($sentences as $s) {
-                $dup = false;
-                foreach ($compressed as $ex) {
-                    if ($similar($s, $ex) > 0.7) { $dup = true; break; }
-                }
-                if (!$dup) { $compressed[] = $s; }
-            }
-            $combined = collect($compressed)
-                ->map(function ($s) {
-                    $s = trim($s);
-                    if ($s === '') return '';
-                    $s = mb_strtoupper(mb_substr($s, 0, 1)) . mb_substr($s, 1);
-                    return preg_match('/[.!?]$/', $s) ? $s : ($s . '.');
-                })
-                ->filter()
-                ->implode(' ');
+            
+            $combined = implode(' ', $learnings);
         } else {
             $combined = collect($reports)
                 ->map(function ($r) {
@@ -167,70 +133,17 @@ class SummaryController extends Controller
             return (int) round(($c / $total) * 100);
         }, $counts);
 
-        // 2) Context-based matching using phrase/regex and proximity heuristics
-        $contextPatterns = [
-            // PO1
-            [ '/apply\s+(knowledge|principles)\s+of\s+(comput|science|mathematics)/i', '/algorithmic\s+thinking/i' ],
-            // PO2
-            [ '/(industry|coding)?\s*standards?/i', '/best\s+practices?/i', '/standards?\s+compliant/i' ],
-            // PO3
-            [ '/analy(ze|sis)\s+(a\s+)?(complex\s+)?(problem|issue|bug)/i', '/root\s+cause\s+analys(is|e)/i', '/troubleshoot(ing)?/i' ],
-            // PO4
-            [ '/user\s+(needs?|requirements?)/i', '/gather(ing)?\s+requirements?/i', '/stakeholder\s+(analysis|interviews?)/i', '/ux\s+research/i', '/usability\s+testing/i' ],
-            // PO5
-            [ '/design(ing)?\s+(and\s+)?(implement(ing)?|develop(ing)?)/i', '/system\s+design/i', '/evaluate\s+(the|a)\s+system/i', '/test(ing)?\s+(the\s+)?system/i' ],
-            // PO6
-            [ '/public\s+(health|safety)/i', '/environment(al)?\s+impact/i', '/security\s+(policy|controls?)/i', '/data\s+protection/i', '/ethic(al|s)\s+(issue|considerations?)/i' ],
-            // PO7
-            [ '/(use|utili[sz]e|apply)\s+(new\s+)?(tools?|frameworks?|libraries?|technolog(y|ies)|platforms?)/i', '/leverag(ed|ing)\s+(a|the)\s+(framework|tool|library)/i' ],
-            // PO8
-            [ '/team\s*work/i', '/collaborat(e|ion)/i', '/lead(ing|ership)/i', '/group\s+project/i', '/scrum\s+(master|lead)/i' ],
-            // PO9
-            [ '/project\s+plan/i', '/(gantt|timeline|schedule)/i', '/milestones?/i', '/work\s+breakdown/i' ],
-            // PO10
-            [ '/communicat(e|ion)\s+(skills?|effectively)/i', '/present(ation|ed)/i', '/wrote?\s+(a\s+)?report/i', '/documentation/i' ],
-            // PO11
-            [ '/impact\s+(on|to)\s+(society|organization|community)/i', '/social\s+impact/i', '/business\s+impact/i' ],
-            // PO12
-            [ '/ethical\s+(issue|practice|standard)/i', '/privacy\s+policy/i', '/legal\s+compliance/i', '/data\s+privacy/i', '/plagiarism/i' ],
-            // PO13
-            [ '/self[- ]study/i', '/independent\s+learning/i', '/learn(ed|ing)\s+(new|on\s+my\s+own)/i', '/continuous\s+learning/i' ],
-            // PO14
-            [ '/research(\s+and\s+development|\s+project)?/i', '/experimen(t|tal)/i', '/prototype\s+study/i', '/investigation/i' ],
-            // PO15
-            [ '/filipino\s+(heritage|culture)/i', '/historical\s+heritage/i', '/local\s+culture/i', '/tradition/i' ],
-        ];
+        // Note: Context-based matching is only done by OpenAI, not here
+        // This controller only does word-based text mining (keyword matching)
 
-        $contextCounts = array_map(function ($patterns) use ($combined) {
-            $c = 0;
-            foreach ($patterns as $re) { if (preg_match($re, $combined)) { $c = 1; break; } }
-            return $c; // boolean-style hit per PO
-        }, $contextPatterns);
-
-        // Combined hit per PO (1 if either word- or context-based matched)
-        $combinedScores = [];
-        for ($i = 0; $i < 15; $i++) {
-            $combinedScores[$i] = (($counts[$i] ?? 0) > 0 || ($contextCounts[$i] ?? 0) > 0) ? 1 : 0;
-        }
-
-        // Optionally call OpenAI when enabled
-        // Pass week context by replacing placeholder {WEEK} in adapter prompts
-        if ($week) {
-            // Temporarily inject the week into combined text header to allow adapter to format opening
-            $combined = "[WEEK {$week}] " . $combined;
-        }
-        $result = $adapter->analyze($combined, $analysisType, $useGPT);
-        if ($week && isset($result['summary'])) {
-            // Fix opening if model echoed [WEEK N]; ensure desired "In week N this student ..."
-            $result['summary'] = preg_replace('/^\[WEEK\s+\d+\]\s*/i', '', $result['summary']);
-        }
+        // Pass week number to adapter for NLP summarization
+        // NLP service will format the summary with proper week prefix
+        $result = $adapter->analyze($combined, $analysisType, $useGPT, $week);
         $summary = $result['summary'];
 
         return response()->json([
             'summary' => $summary,
-            'keywordScores' => $keywordScores,
-            'contextScores' => $contextCounts,
-            'combinedScores' => $combinedScores,
+            'keywordScores' => $keywordScores, // Word-based text mining scores only
             'usedGPT' => (bool) $result['usedGPT'],
         ], 200, [
             'Access-Control-Allow-Origin' => '*',

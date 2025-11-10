@@ -1,13 +1,10 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import axiosClient from "../api/axiosClient";
-import { useLocation, useNavigate } from "react-router-dom";
-import { getReportsActionColumns, getReportsStaticColumns } from "../utils/columns/reportsColumns";
 import Page from "../components/common/Page";
 import Loader from "../components/common/Loader";
 import Section from "../components/common/Section";
 import Heading from "../components/common/Heading";
 import Text from "../components/common/Text";
-import { Select } from "@headlessui/react";
 import DynamicDataGrid from "../components/tables/DynamicDataGrid";
 
 const ViewReportsPage = ({ authorizeRole }) => {
@@ -15,17 +12,21 @@ const ViewReportsPage = ({ authorizeRole }) => {
   const [students, setStudents] = useState([]);
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [selectedStudentCompany, setSelectedStudentCompany] = useState("");
-  const ALL_WEEKS = useMemo(() => Array.from({ length: 13 }, (_, i) => i + 1), []);
   const [availableWeeks, setAvailableWeeks] = useState([]);
   const [selectedWeek, setSelectedWeek] = useState(1);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [studentSummary, setStudentSummary] = useState("");
   // Coordinator view: recommendations hidden (chairperson only)
   const [totalHours, setTotalHours] = useState(0);
-
-  // Open location and navigation
-  const location = useLocation();
-  const navigate = useNavigate();
+  
+  // PO Analysis state
+  const [poAnalysisLoading, setPoAnalysisLoading] = useState(false);
+  const [posHit, setPosHit] = useState([]);
+  const [posNotHit, setPosNotHit] = useState([]);
+  const [poError, setPoError] = useState("");
+  const [poScores, setPoScores] = useState(Array.from({ length: 15 }, () => 0));
+  const [wordBasedContributions, setWordBasedContributions] = useState(Array.from({ length: 15 }, () => 0));
+  const [contextBasedContributions, setContextBasedContributions] = useState(Array.from({ length: 15 }, () => 0));
 
   // Loading state
   const [loading, setLoading] = useState(false);
@@ -37,31 +38,6 @@ const ViewReportsPage = ({ authorizeRole }) => {
   // Grid will fetch weekly entries from backend when applicationId is present
   // grid fetch disabled; we fetch and filter locally from weekly-entries/student/{id}
   const gridUrl = undefined; // prevent DynamicDataGrid from issuing a fetch
-
-  // Function that navigates to DTR
-  const navigateToDtr = ({ id }) => {
-    const to = `${location.pathname}/${id}/daily-time-records`;
-
-    navigate(to);
-  };
-
-  // Function that navigates to WAR
-  const navigateToWar = (params) => {
-    const to = `${location.pathname}/${params.row.id}/weekly-accomplishment-reports`;
-
-    navigate(to, {
-      state: {
-        name: params.row.name,
-      },
-    });
-  };
-
-  // Function that navigates to Performance Evaluation
-  const navigateToEvaluation = (params) => {
-    const to = `${location.pathname}/${params.row.id}/performance-evaluation`;
-
-    navigate(to);
-  };
 
   // Static Columns
   // Weekly report columns (for weekly-entries rows)
@@ -102,7 +78,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
   const columns = weeklyColumns;
 
   // Fetch coordinator's students for dropdown
-  React.useEffect(() => {
+  useEffect(() => {
     let cancel = false;
     (async () => {
       try {
@@ -145,7 +121,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
   }, []);
 
   // Track selected student's company name
-  React.useEffect(() => {
+  useEffect(() => {
     let cancelled = false;
     const setFromOption = () => {
       const s = students.find((x) => String(x.id) === String(selectedStudentId));
@@ -206,7 +182,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
   }, [students, selectedStudentId]);
 
   // Fetch available weeks for selected student
-  React.useEffect(() => {
+  useEffect(() => {
     let cancel = false;
     if (!selectedStudentId) { 
       setAvailableWeeks([]);
@@ -280,8 +256,87 @@ const ViewReportsPage = ({ authorizeRole }) => {
     };
   }, [selectedStudentId, selectedWeek]);
 
+  // Calculate PO scores for graph display
+  const calculatePOScores = useCallback((poData, weeklyEntries) => {
+    // Extract text from weekly entries for keyword matching
+    const combinedText = weeklyEntries.map(e => 
+      `${e.tasks || ''} ${e.learnings || ''}`
+    ).join(' ').toLowerCase();
+    
+    // Keyword sets for each PO
+    const keywordSets = [
+      ['math', 'mathematics', 'science', 'algorithm', 'compute', 'analysis', 'calculate', 'solve'],
+      ['best practice', 'standard', 'policy', 'method', 'procedure', 'protocol', 'quality'],
+      ['analyze', 'analysis', 'problem', 'root cause', 'diagnose', 'troubleshoot', 'debug', 'test'],
+      ['user need', 'requirement', 'stakeholder', 'ux', 'usability', 'feedback'],
+      ['design', 'implement', 'evaluate', 'build', 'develop', 'test', 'setup', 'configure', 'create'],
+      ['safety', 'health', 'environment', 'security', 'ethical', 'sustainability'],
+      ['tool', 'framework', 'library', 'technology', 'platform', 'software'],
+      ['team', 'collaborat', 'leader', 'group', 'meeting'],
+      ['plan', 'schedule', 'timeline', 'project plan', 'documentation'],
+      ['communicat', 'present', 'documentation', 'write', 'report', 'explain'],
+      ['impact', 'society', 'organization', 'community', 'global'],
+      ['ethical', 'privacy', 'legal', 'compliance', 'professional'],
+      ['learn', 'self-study', 'latest', 'new skill', 'research', 'study'],
+      ['research', 'experiment', 'study', 'investigation', 'development'],
+      ['filipino', 'heritage', 'culture', 'tradition'],
+    ];
+    
+    // Calculate keyword scores
+    const keywordCounts = keywordSets.map(set => {
+      let count = 0;
+      for (const kw of set) {
+        if (combinedText.includes(kw)) count++;
+      }
+      return count;
+    });
+    const totalKeywordCount = keywordCounts.reduce((a, b) => a + b, 0) || 1;
+    const keywordScores = keywordCounts.map(c => (c / totalKeywordCount) * 100);
+    
+    // Get confirmed POs from pos_hit
+    const confirmedPOs = new Set();
+    if (Array.isArray(poData?.pos_hit)) {
+      poData.pos_hit.forEach(item => {
+        const po = typeof item === 'string' ? item : (item?.po || '');
+        if (po && po.match(/^PO\d+$/)) {
+          confirmedPOs.add(po);
+        }
+      });
+    }
+    
+    // Build AI scores (1 if PO is in any AI analysis, 0 otherwise)
+    const aiScores = Array.from({ length: 15 }, (_, i) => {
+      const code = `PO${i + 1}`;
+      return confirmedPOs.has(code) ? 1 : 0;
+    });
+    
+    // Hybrid approach: 40% keyword + 60% AI
+    const alpha = 0.4;
+    const beta = 0.6;
+    
+    // Calculate contributions
+    const wordContribs = keywordScores.map(k => Math.round(alpha * k));
+    const contextContribs = aiScores.map(a => Math.round(beta * a * 100));
+    
+    // Calculate final scores
+    const finalScores = Array.from({ length: 15 }, (_, i) => {
+      const poCode = `PO${i + 1}`;
+      if (confirmedPOs.has(poCode)) {
+        const k = keywordScores[i] || 0;
+        const a = aiScores[i] || 0;
+        const hybridScore = (alpha * k) + (beta * a * 100);
+        return Math.max(50, Math.round(hybridScore));
+      }
+      return 0;
+    });
+    
+    setPoScores(finalScores);
+    setWordBasedContributions(wordContribs);
+    setContextBasedContributions(contextContribs);
+  }, []);
+
   // Fetch summary + total hours for coordinator
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchSummary = async () => {
       if (!selectedStudentId) return;
       try {
@@ -289,9 +344,11 @@ const ViewReportsPage = ({ authorizeRole }) => {
         const resp = await axiosClient.post("/api/v1/summary", {
           studentId: selectedStudentId,
           week: selectedWeek,
-          useGPT: true,
+          useGPT: false, // NLP is faster, no need for OpenAI
           analysisType: "coordinator",
           isOverall: false,
+        }, {
+          timeout: 30000, // 30 seconds should be enough for NLP summarization
         });
         const data = resp?.data || {};
         const cleanHtml = (txt) => String(txt || "")
@@ -302,73 +359,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
           .replace(/&gt;/gi, ">")
           .replace(/\s+/g, " ")
           .trim();
-        let s = cleanHtml(data?.summary || "");
-        // Heuristic: if backend returns raw concatenation (no sentences), build a client-side summary
-        const periodCount = (s.match(/[.!?]/g) || []).length;
-        if (!s || periodCount < 2) {
-          // Fallback: fetch entries and compose concise bullet-like sentences
-          try {
-            const r = await fetch(
-              `${import.meta.env.VITE_API_BASE_URL}/api/v1/weekly-entries/student/${selectedStudentId}`,
-              {
-                headers: {
-                  Accept: "application/json",
-                  Authorization: `Bearer ${JSON.parse(localStorage.getItem("ACCESS_TOKEN"))}`,
-                },
-                credentials: "include",
-              }
-            );
-            const p = await r.json().catch(() => []);
-            const list = Array.isArray(p?.data) ? p.data : Array.isArray(p) ? p : [];
-            const filterByWeek = list.filter((e) => {
-              const wn = Number(e.week_number ?? e.weekNumber ?? e.week);
-              return Number.isNaN(wn) ? true : wn === Number(selectedWeek);
-            });
-            const clean = (t) => cleanHtml(t);
-            // Try OpenAI polishing using structured activities/learnings
-            try {
-              const activities = filterByWeek.map((e) => clean(e.tasks ?? e.task ?? e.activities)).filter(Boolean);
-              const learnings = filterByWeek.map((e) => clean(e.learnings ?? e.learning)).filter(Boolean);
-              // Build GET fallback payload as query param as well to avoid CSRF anomalies
-              const payload = { data: { corrected_activities: activities, corrected_learnings: learnings, 'summary for this section on a week': '' }, type: 'coordinator_week' };
-              const query = encodeURIComponent(JSON.stringify(payload.data));
-              // Try POST first
-              let aiResp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/summary/openai-summarize-coordinator`, {
-                method: 'POST',
-                headers: {
-                  Accept: 'application/json',
-                  'Content-Type': 'application/json',
-                  Authorization: `Bearer ${JSON.parse(localStorage.getItem('ACCESS_TOKEN'))}`,
-                  'X-Requested-With': 'XMLHttpRequest'
-                },
-                // send cookies if backend uses session-based auth
-                credentials: 'include',
-                body: JSON.stringify({ data: payload.data, type: payload.type })
-              });
-              if (!aiResp.ok) {
-                aiResp = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/v1/summary/openai-summarize-coordinator?data=${query}&type=coordinator_week`, {
-                  method: 'GET',
-                  headers: { Accept: 'application/json', Authorization: `Bearer ${JSON.parse(localStorage.getItem('ACCESS_TOKEN'))}` },
-                  credentials: 'include'
-                });
-              }
-              if (aiResp.ok) {
-                const aiJson = await aiResp.json();
-                if (aiJson?.summary) {
-                  s = cleanHtml(aiJson.summary);
-                }
-              }
-            } catch (_) { /* ignore */ }
-
-            if (!s || (s.match(/[.!?]/g) || []).length < 2) {
-              const bullets = filterByWeek.flatMap((e) => [clean(e.tasks ?? e.task ?? e.activities), clean(e.learnings ?? e.learning)]).filter(Boolean);
-              const top = bullets.slice(0, 5).map((b) => (b.endsWith('.') ? b : b + '.'));
-              s = top.join(' ');
-            }
-          } catch (_) {
-            s = s || "No data available.";
-          }
-        }
+        const s = cleanHtml(data?.summary || "");
         setStudentSummary(s || "No data available.");
         // Coordinator: do not compute or display recommendations
       } catch (e) {
@@ -402,7 +393,60 @@ const ViewReportsPage = ({ authorizeRole }) => {
 
     fetchSummary();
     fetchTotalHours();
-  }, [selectedStudentId, selectedWeek]);
+    
+    // Fetch PO Analysis
+    const fetchPOAnalysis = async () => {
+      if (!selectedStudentId) {
+        setPosHit([]);
+        setPosNotHit([]);
+        setPoError("");
+        return;
+      }
+      try {
+        setPoAnalysisLoading(true);
+        setPoError("");
+        const resp = await axiosClient.get("/api/v1/summary/student-po-analysis", {
+          params: {
+            studentId: selectedStudentId,
+            week: selectedWeek,
+            useGPT: true, // PO analysis still uses OpenAI
+          },
+          timeout: 90000, // 90 seconds timeout for PO analysis (OpenAI can be slow)
+        });
+        const data = resp?.data || {};
+        
+        // Extract PO analysis data
+        if (Array.isArray(data?.pos_hit)) {
+          setPosHit(data.pos_hit);
+        } else {
+          setPosHit([]);
+        }
+        
+        if (Array.isArray(data?.pos_not_hit)) {
+          setPosNotHit(data.pos_not_hit);
+        } else {
+          setPosNotHit([]);
+        }
+        
+        // Calculate PO scores for graph (use allEntries filtered by week)
+        const weekEntries = allEntries.filter(e => e.week_number === Number(selectedWeek));
+        calculatePOScores(data, weekEntries);
+        
+        if (data?.openai_unavailable) {
+          setPoError("PO Analysis is currently unavailable. Please try again later.");
+        }
+      } catch (e) {
+        console.error("Error fetching PO analysis:", e);
+        setPoError("Failed to load PO analysis. Please try again.");
+        setPosHit([]);
+        setPosNotHit([]);
+      } finally {
+        setPoAnalysisLoading(false);
+      }
+    };
+    
+    fetchPOAnalysis();
+  }, [selectedStudentId, selectedWeek, allEntries, calculatePOScores]);
 
   return (
     <Page>
@@ -473,6 +517,218 @@ const ViewReportsPage = ({ authorizeRole }) => {
         {selectedStudentId && (
           <div className="bg-white border rounded p-4 min-h-[80px] text-gray-800 whitespace-pre-wrap break-words mb-4">
             {summaryLoading ? "Analyzing…" : (studentSummary || "No data available.")}
+          </div>
+        )}
+
+        {/* PO Analysis Section */}
+        {selectedStudentId && (
+          <div className="bg-white border rounded-lg shadow-sm mb-4">
+            <div className="px-4 py-3 border-b bg-gray-50 rounded-t-lg">
+              <h4 className="text-lg font-semibold text-gray-800">Program Outcome (PO) Analysis</h4>
+            </div>
+            <div className="p-4">
+              {poError && (
+                <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+                  {poError}
+                </div>
+              )}
+              {poAnalysisLoading && (
+                <div className="mb-3 text-sm text-sky-800 bg-sky-50 border border-sky-200 rounded px-3 py-2">
+                  Loading PO analysis…
+                </div>
+              )}
+              {!poAnalysisLoading && !poError && (
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* POs Achieved */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h5 className="text-lg font-semibold text-blue-800 mb-3">Program Outcomes Achieved</h5>
+                    {posHit && posHit.length > 0 ? (
+                      <div className="text-sm text-blue-700 leading-relaxed">
+                        <p className="mb-2">Based on the analysis of student activities and reports, the following program outcomes have been successfully achieved:</p>
+                        <ul className="list-disc list-inside space-y-1 text-blue-800">
+                          {posHit.map((h, i) => (
+                            <li key={`hit-${i}`}>
+                              <strong>{h.po || h}</strong> — {h.reason ? h.reason.toLowerCase() : 'Evidence found in activities and learnings'}
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-3 text-blue-600">
+                          These achievements indicate strong progress in the student's learning journey and demonstrate practical application of theoretical knowledge in real-world scenarios.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-blue-600">No specific POs were clearly achieved this week.</p>
+                    )}
+                  </div>
+
+                  {/* POs Not Met */}
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <h5 className="text-lg font-semibold text-red-800 mb-3">Program Outcomes Not Met</h5>
+                    {posNotHit && posNotHit.length > 0 ? (
+                      <div className="text-sm text-red-700 leading-relaxed">
+                        <p className="mb-2">After reviewing the student activities and reports, the following program outcomes require additional attention and development:</p>
+                        <ul className="list-disc list-inside space-y-1 text-red-800">
+                          {posNotHit.map((h, i) => (
+                            <li key={`not-hit-${i}`}>
+                              <strong>{h.po || h}</strong> — {h.reason ? h.reason.toLowerCase() : 'No evidence found in activities and learnings'}
+                            </li>
+                          ))}
+                        </ul>
+                        <p className="mt-3 text-red-600">
+                          These areas present opportunities for improvement and should be addressed in future activities to ensure comprehensive learning outcomes are met.
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-red-600">All POs were achieved this week.</p>
+                    )}
+                  </div>
+                </div>
+              )}
+              
+              {/* PO Analysis Graph */}
+              {!poAnalysisLoading && !poError && (
+                <div className="mt-6 bg-white border rounded-lg shadow-sm">
+                  <div className="px-4 py-3 border-b bg-gray-50 rounded-t-lg">
+                    <h5 className="text-lg font-semibold text-gray-800">Program Outcome Analysis Graph</h5>
+                  </div>
+                  <div className="p-4">
+                    {(() => {
+                      const chartMax = 100;
+                      const chartHeight = 300;
+                      const yStep = 10;
+                      const steps = chartMax / yStep;
+                      const stepPx = chartHeight / steps;
+                      const yTicks = Array.from({ length: steps + 1 }, (_, k) => k * yStep);
+                      const itemWidth = 40;
+                      const itemGap = 8;
+                      
+                      return (
+                        <div className="w-full overflow-x-auto">
+                          <div className="flex relative" style={{ minHeight: chartHeight + 60 }}>
+                            {/* Y Axis labels */}
+                            <div className="relative pr-2 text-gray-600 text-sm" style={{ height: chartHeight, width: 40 }}>
+                              {yTicks.map((t, idx) => {
+                                const y = chartHeight - (t / chartMax) * chartHeight;
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="absolute right-0"
+                                    style={{ top: `${y}px`, transform: 'translateY(-50%)' }}
+                                  >
+                                    {t}%
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            
+                            {/* Chart Area */}
+                            <div className="flex-1 relative">
+                              {/* Grid Background */}
+                              <div 
+                                className="absolute w-full h-full"
+                                style={{
+                                  backgroundImage: 'linear-gradient(to right, rgba(0,0,0,0.1) 1px, transparent 1px), linear-gradient(to bottom, rgba(0,0,0,0.1) 1px, transparent 1px)',
+                                  backgroundSize: `${itemWidth + itemGap}px ${stepPx}px, ${itemWidth + itemGap}px ${stepPx}px`,
+                                  backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                                  height: chartHeight
+                                }}
+                              ></div>
+                              
+                              {/* Bars */}
+                              <div className="flex items-end h-full px-3" style={{ height: chartHeight }}>
+                                {poScores.map((v, i) => {
+                                  const height = Math.max(4, Math.round((v / chartMax) * chartHeight));
+                                  const isAchieved = v > 0;
+                                  const barColor = isAchieved ? 'bg-blue-600' : 'bg-red-500';
+                                  
+                                  const wordContrib = wordBasedContributions[i] || 0;
+                                  const contextContrib = contextBasedContributions[i] || 0;
+                                  
+                                  // Calculate nested bar height: word contribution as percentage of total score
+                                  // The red bar should show the word-based contribution (40% weight) inside the blue bar
+                                  const nestedHeight = v > 0 && wordContrib > 0 
+                                    ? Math.max(2, Math.round((wordContrib / chartMax) * chartHeight))
+                                    : 0;
+                                  
+                                  return (
+                                    <div 
+                                      key={`${i}-${v}`} 
+                                      className="flex flex-col items-center relative" 
+                                      style={{ width: itemWidth, marginRight: i < poScores.length - 1 ? itemGap : 0 }}
+                                      title={`PO${i + 1}: ${v}% (Word: ${wordContrib}%, Context: ${contextContrib}%) - ${isAchieved ? 'Achieved' : 'Not Met'}`}
+                                    >
+                                      <div 
+                                        className={`w-full ${barColor} border border-gray-800 rounded-t relative`}
+                                        style={{ 
+                                          height: height,
+                                          boxSizing: 'border-box',
+                                          transition: 'all 0.3s ease',
+                                          cursor: 'pointer'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                          e.target.style.transform = 'scaleY(1.1)';
+                                          e.target.style.boxShadow = '0 4px 8px rgba(0,0,0,0.2)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                          e.target.style.transform = 'scaleY(1)';
+                                          e.target.style.boxShadow = 'none';
+                                        }}
+                                      >
+                                        {/* Nested contribution bar - Red outline showing word-based contribution (40% weight) */}
+                                        {v > 0 && wordContrib > 0 && nestedHeight > 0 && (
+                                          <div
+                                            className="absolute bottom-0 left-0 w-full"
+                                            style={{
+                                              height: `${Math.min(100, Math.max(5, (nestedHeight / height) * 100))}%`,
+                                              border: '2px solid #dc2626',
+                                              borderBottom: 'none',
+                                              backgroundColor: 'rgba(220, 38, 38, 0.25)',
+                                              boxSizing: 'border-box',
+                                              borderRadius: '2px 2px 0 0',
+                                              zIndex: 5,
+                                              minHeight: '4px'
+                                            }}
+                                            title={`Word-based contribution: ${wordContrib}% (40% weight) of total ${v}%`}
+                                          />
+                                        )}
+                                        
+                                        {/* Percentage label */}
+                                        {v > 0 && (
+                                          <div className="absolute top-0 left-1/2 transform -translate-x-1/2 text-white text-xs font-bold" style={{ zIndex: 10 }}>
+                                            {v}%
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* X-axis labels */}
+                          <div className="mt-3 flex">
+                            <div style={{ width: 40 }}></div>
+                            <div className="flex-1 px-3">
+                              <div className="flex">
+                                {poScores.map((v, i) => (
+                                  <div key={`lbl-${i}`} className="text-center" style={{ width: itemWidth, marginRight: i < poScores.length - 1 ? itemGap : 0 }}>
+                                    <div className="text-sm font-bold text-gray-800">PO{i + 1}</div>
+                                    <div className={`inline-block px-2 py-1 rounded text-xs ${v > 0 ? 'bg-blue-600 text-white' : 'bg-red-500 text-white'}`}>
+                                      {v}%
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

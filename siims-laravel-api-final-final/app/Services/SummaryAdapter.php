@@ -2,25 +2,33 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\Http;
+use App\Services\NLPSummarizationService;
 
 class SummaryAdapter
 {
+    protected $nlpService;
+
+    public function __construct(NLPSummarizationService $nlpService)
+    {
+        $this->nlpService = $nlpService;
+    }
+
     /**
      * Analyze a combined text and return summary and keyword scores.
-     * If $useGPT is true and OPENAI_API_KEY exists, attempts GPT. Always computes keyword scores.
+     * Uses NLP-based summarization instead of OpenAI for faster processing.
      *
      * @param string $text
      * @param string|null $analysisType 'chairman' | 'coordinator' | null
-     * @param bool $useGPT
+     * @param bool $useGPT (deprecated - kept for compatibility, but NLP is always used)
+     * @param int|null $week Week number (optional, passed directly from controller)
      * @return array{ summary: string, keywordScores: array<int,int>, usedGPT: bool }
      */
-    public function analyze(string $text, ?string $analysisType, bool $useGPT = false): array
+    public function analyze(string $text, ?string $analysisType, bool $useGPT = false, ?int $week = null): array
     {
         $clean = trim(preg_replace('/\s+/', ' ', strip_tags($text)) ?? '');
-        // Extract week number if prefixed like: [WEEK N]
-        $weekNumber = null;
-        if (preg_match('/^\[WEEK\s+(\d+)\]\s*/i', $clean, $m)) {
+        // Use week number if provided, otherwise try to extract from text
+        $weekNumber = $week;
+        if ($weekNumber === null && preg_match('/^\[WEEK\s+(\d+)\]\s*/i', $clean, $m)) {
             $weekNumber = (int)($m[1] ?? 0) ?: null;
             $clean = trim(preg_replace('/^\[WEEK\s+\d+\]\s*/i', '', $clean));
         }
@@ -63,63 +71,23 @@ class SummaryAdapter
         $total = array_sum($counts) ?: 1;
         $scores = array_map(fn($c) => (int)round(($c / $total) * 100), $counts);
 
-        $summary = $clean ?: 'No journal entries found.';
-        $usedGPT = false;
+        // Use NLP-based summarization (faster, no API dependency)
+        $summary = 'No journal entries found.';
+        $usedGPT = false; // Always false now - using NLP instead
 
-        $apiKey = env('OPENAI_API_KEY');
-        if ($useGPT && $apiKey && $clean) {
+        if ($clean) {
             try {
-                $model = 'gpt-4o-mini';
                 if ($analysisType === 'coordinator') {
-                    $weekLabel = $weekNumber ? (string)$weekNumber : 'the selected week';
-                    $sys = "You are a professional summarization assistant for BSIT internship journals. Create a single brief summary (2–3 sentences), clear and easy to read. Do NOT use first-person (no I, me, we). Start the summary with: 'In week {$weekLabel} this student ...'.";
-                    $usr = "Learnings (cleaned):\n".$clean;
+                    $summary = $this->nlpService->summarizeForCoordinator($clean, $weekNumber);
                 } elseif ($analysisType === 'chairman') {
-                    $sys = "You are an expert evaluator analyzing BSIT internship journals for chairpersons. Provide ONLY which Program Outcomes (POs) were achieved/not achieved, no narrative.";
-                    $usr = "Entry:\n".$clean;
+                    $summary = $this->nlpService->summarizeForChairperson($clean, $weekNumber);
                 } else {
-                    $sys = 'You are an educational evaluator for BSIT internships.';
-                    $usr = "Summarize briefly and identify relevant program outcomes. Entry:\n".$clean;
-                }
-
-                $resp = Http::withToken($apiKey)->timeout(30)->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => $model,
-                    'messages' => [
-                        ['role' => 'system', 'content' => $sys],
-                        ['role' => 'user', 'content' => $usr],
-                    ],
-                    'temperature' => 0.6,
-                    'max_tokens' => 200,
-                ]);
-                if ($resp->ok()) {
-                    $data = $resp->json();
-                    $content = $data['choices'][0]['message']['content'] ?? null;
-                    if ($content) {
-                        // If the model returned JSON, try to extract summary; otherwise use raw content
-                        $match = [];
-                        if (preg_match('/```json([\s\S]*?)```/i', $content, $match)) {
-                            $json = trim($match[1]);
-                            $decoded = json_decode($json, true);
-                            if (is_array($decoded) && !empty($decoded['summary'])) {
-                                $summary = trim((string)$decoded['summary']);
-                            } else {
-                                $summary = trim($content);
-                            }
-                        } else {
-                            $summary = trim($content);
-                        }
-                        $usedGPT = true;
-                    }
-                } else {
-                    // OpenAI request failed - log but don't use fallback
-                    \Log::warning('OpenAI API request failed in SummaryAdapter', [
-                        'status' => $resp->status() ?? 'unknown',
-                        'error' => $resp->json()['error'] ?? 'Unknown error'
-                    ]);
+                    // Default to coordinator style
+                    $summary = $this->nlpService->summarizeForCoordinator($clean, $weekNumber);
                 }
             } catch (\Throwable $e) {
-                // Log error but don't use fallback - return error state
-                \Log::error('OpenAI API Error in SummaryAdapter:', ['message' => $e->getMessage()]);
+                \Log::error('NLP Summarization Error in SummaryAdapter:', ['message' => $e->getMessage()]);
+                $summary = $clean ?: 'No journal entries found.';
             }
         }
 
