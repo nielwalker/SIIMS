@@ -15,8 +15,7 @@ return [
     |
     */
 
-    'paths' => ['*'], // Development
-    // 'paths' => ['api/*', 'sanctum/csrf-cookie'], // Deployment
+    'paths' => ['api/*', 'sanctum/csrf-cookie'], // All API routes
 
     'allowed_methods' => ['*'],
 
@@ -32,8 +31,8 @@ return [
 
     'exposed_headers' => [],
 
-    'max_age' => 0,
+    'max_age' => 86400, // Cache preflight for 24 hours
 
-    'supports_credentials' => true,
+    'supports_credentials' => true, // Must be true when frontend sends credentials
 
 ];

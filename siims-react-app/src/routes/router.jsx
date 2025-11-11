@@ -47,6 +47,7 @@ const router = createBrowserRouter([
             return userRoles;
           } catch (error) {
             console.log(error);
+            return []; // Return empty array on error
           }
         },
       },

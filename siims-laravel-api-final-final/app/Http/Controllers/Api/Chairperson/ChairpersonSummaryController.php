@@ -28,18 +28,26 @@ class ChairpersonSummaryController extends Controller
     /**
      * Handle OPTIONS request for CORS preflight
      */
-    public function options(): JsonResponse
+    public function options(Request $request): JsonResponse
     {
-        return response()->json(null, 204, [
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With',
-            'Access-Control-Max-Age' => '86400',
-        ]);
+        $origin = $request->headers->get('Origin');
+        $allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000', env('FRONTEND_URL', 'http://localhost:3000')];
+        $allowedOrigin = in_array($origin, $allowedOrigins) ? $origin : $allowedOrigins[0];
+        
+        $response = response()->json(null, 204);
+        $response->headers->set('Access-Control-Allow-Origin', $allowedOrigin);
+        $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PATCH');
+        $response->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+        $response->headers->set('Access-Control-Allow-Credentials', 'true');
+        $response->headers->set('Access-Control-Max-Age', '86400');
+        return $response;
     }
 
     public function generate(Request $request, ChairSummaryAdapter $adapter): JsonResponse
     {
+        // Increase execution time limit for large datasets (30+ students)
+        set_time_limit(120); // 2 minutes for processing large datasets
+        
         $coordinatorId = $request->input('coordinatorId');
         $sectionId = $request->input('sectionId');
         $week = $request->integer('week');
@@ -75,16 +83,28 @@ class ChairpersonSummaryController extends Controller
         
         \Log::info('ChairSummary: Processing ' . $rows->count() . ' entries (max: ' . $maxEntries . ') for coordinator ' . $coordinatorId . ', section ' . $sectionId . ', week ' . $week);
         
-        // Log sample student IDs for debugging
+        // Log sample student IDs for debugging (limit to prevent large JSON encoding)
         if ($rows->count() > 0) {
-            $studentIds = DB::table('students as s')
-                ->select('s.id', 's.section_id', 's.coordinator_id')
+            $studentCount = DB::table('students as s')
                 ->where('s.coordinator_id', $coordinatorId)
                 ->when($sectionId, function($q) use ($sectionId) {
                     return $q->where('s.section_id', $sectionId);
                 })
-                ->get();
-            \Log::info('ChairSummary: Students matching criteria: ' . json_encode($studentIds));
+                ->count();
+            
+            // Only log sample IDs if reasonable number, otherwise just count
+            if ($studentCount <= 50) {
+                $studentIds = DB::table('students as s')
+                    ->select('s.id', 's.section_id', 's.coordinator_id')
+                    ->where('s.coordinator_id', $coordinatorId)
+                    ->when($sectionId, function($q) use ($sectionId) {
+                        return $q->where('s.section_id', $sectionId);
+                    })
+                    ->get();
+                \Log::info('ChairSummary: Students matching criteria: ' . json_encode($studentIds));
+            } else {
+                \Log::info('ChairSummary: Students matching criteria: ' . $studentCount . ' students (too many to log)');
+            }
         }
         
         // Extract activities/tasks and learnings separately for PO analysis
@@ -189,9 +209,25 @@ class ChairpersonSummaryController extends Controller
             // Summary generation is separate from PO analysis
             // Set a timeout for the entire operation to prevent hanging
             $startTime = microtime(true);
-            $maxExecutionTime = 40; // Maximum seconds for OpenAI calls
             
-            $result = $adapter->summarize($combined, $week, $useGPT, $activities, $learnings);
+            // For large datasets (30+ students), limit the data sent to OpenAI to prevent timeouts
+            // OpenAI has token limits and processing large amounts of data can cause timeouts
+            $maxActivities = 50; // Limit activities to prevent timeout
+            $maxLearnings = 50;  // Limit learnings to prevent timeout
+            
+            $limitedActivities = array_slice($activities, 0, $maxActivities);
+            $limitedLearnings = array_slice($learnings, 0, $maxLearnings);
+            
+            if (count($activities) > $maxActivities || count($learnings) > $maxLearnings) {
+                \Log::info('ChairSummary: Limiting data for OpenAI', [
+                    'original_activities' => count($activities),
+                    'limited_activities' => count($limitedActivities),
+                    'original_learnings' => count($learnings),
+                    'limited_learnings' => count($limitedLearnings),
+                ]);
+            }
+            
+            $result = $adapter->summarize($combined, $week, $useGPT, $limitedActivities, $limitedLearnings);
             
             $executionTime = microtime(true) - $startTime;
             \Log::info('ChairSummary: OpenAI execution time', [
@@ -204,12 +240,17 @@ class ChairpersonSummaryController extends Controller
             // Check if OpenAI was unavailable
             if (isset($result['openai_unavailable']) && $result['openai_unavailable']) {
                 // Return error response immediately without caching
-                return response()->json($result, 503, [
-                    'Access-Control-Allow-Origin' => '*',
-                    'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
-                    'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With',
-                    'Access-Control-Max-Age' => '86400',
-                ]);
+                $origin = $request->headers->get('Origin');
+                $allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000', env('FRONTEND_URL', 'http://localhost:3000')];
+                $allowedOrigin = in_array($origin, $allowedOrigins) ? $origin : $allowedOrigins[0];
+                
+                $errorResponse = response()->json($result, 503);
+                $errorResponse->headers->set('Access-Control-Allow-Origin', $allowedOrigin);
+                $errorResponse->headers->set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PATCH');
+                $errorResponse->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+                $errorResponse->headers->set('Access-Control-Allow-Credentials', 'false');
+                $errorResponse->headers->set('Access-Control-Max-Age', '86400');
+                return $errorResponse;
             }
             
             // Validate that OpenAI generated recommendations (log warning if missing, but don't add defaults)
@@ -241,6 +282,7 @@ class ChairpersonSummaryController extends Controller
             }
             
             // Save to cache for future use (only if we have activities/learnings and OpenAI succeeded)
+            // Use full activities/learnings for cache, not the limited ones sent to OpenAI
             if ((!empty($activities) || !empty($learnings)) && !isset($result['error'])) {
                 try {
                     DB::table('po_analysis_cache')->insert([
@@ -254,8 +296,8 @@ class ChairpersonSummaryController extends Controller
                         'po_word_hit' => json_encode($result['poWordHit'] ?? []),
                         'recommendations' => json_encode($result['recommendations'] ?? []),
                         'summary' => $result['summary'] ?? null,
-                        'activities' => json_encode($activities),
-                        'learnings' => json_encode($learnings),
+                        'activities' => json_encode($activities), // Use full activities for cache
+                        'learnings' => json_encode($learnings), // Use full learnings for cache
                         'created_at' => now(),
                         'updated_at' => now(),
                     ]);
@@ -297,9 +339,10 @@ class ChairpersonSummaryController extends Controller
         $summary = $result['summary'] ?? '';
         
         // Use current activities/learnings from result (which are always current, not cached)
-        // Ensure they are arrays (they should be, but handle edge cases)
-        $currentActivities = $result['activities'] ?? $activities;
-        $currentLearnings = $result['learnings'] ?? $learnings;
+        // Ensure we use the FULL activities/learnings, not the limited ones sent to OpenAI
+        // The result might have limited data, so always use the full $activities and $learnings
+        $currentActivities = $activities; // Always use full activities
+        $currentLearnings = $learnings;   // Always use full learnings
         
         // Convert to arrays if they're JSON strings (from cache)
         if (is_string($currentActivities)) {
@@ -403,18 +446,29 @@ class ChairpersonSummaryController extends Controller
         // Always add evaluation results to response (even if null, so frontend knows evaluation was attempted)
         $result['evaluation'] = $evaluationResults;
 
+        // Ensure full activities and learnings are in the result (not the limited ones sent to OpenAI)
+        // This ensures the frontend gets all the data even though OpenAI only processed a subset
+        $result['activities'] = $activities; // Always use full activities
+        $result['learnings'] = $learnings;   // Always use full learnings
+
         // Activities and learnings are already extracted and stored in result by adapter
         // For "overall" week, ensure summary format
         if ($week === null || $week === 0) {
             $result['summary for this section on a week'] = $result['summary'] ?? '';
         }
 
-        return response()->json($result, 200, [
-            'Access-Control-Allow-Origin' => '*',
-            'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With',
-            'Access-Control-Max-Age' => '86400',
-        ]);
+        $origin = $request->headers->get('Origin');
+        $allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000', env('FRONTEND_URL', 'http://localhost:3000')];
+        $allowedOrigin = in_array($origin, $allowedOrigins) ? $origin : $allowedOrigins[0];
+        
+        $response = response()->json($result, 200);
+        // Ensure CORS headers are set using headers object for better compatibility
+        $response->headers->set('Access-Control-Allow-Origin', $allowedOrigin);
+        $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PATCH');
+        $response->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+        $response->headers->set('Access-Control-Allow-Credentials', 'true');
+        $response->headers->set('Access-Control-Max-Age', '86400');
+        return $response;
     }
 
 

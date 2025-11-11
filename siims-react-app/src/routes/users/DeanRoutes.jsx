@@ -47,6 +47,7 @@ const DeanRoutes = {
       return { userRoles };
     } catch (error) {
       console.log(error);
+      return { userRoles: [] }; // Return default values on error
     }
   },
   children: [
@@ -80,6 +81,7 @@ const DeanRoutes = {
           };
         } catch (error) {
           console.log(error);
+          return { dashboard: null }; // Return default values on error
         }
       },
     },

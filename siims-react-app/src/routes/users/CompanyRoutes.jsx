@@ -62,6 +62,7 @@ const CompanyRoutes = {
       return { userRoles };
     } catch (error) {
       console.log(error);
+      return { userRoles: [] }; // Return default values on error
     }
   },
   children: [

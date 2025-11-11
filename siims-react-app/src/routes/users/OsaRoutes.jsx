@@ -39,6 +39,7 @@ const OsaRoutes = {
       return { userRoles };
     } catch (error) {
       console.log(error);
+      return { userRoles: [] }; // Return default values on error
     }
   },
   children: [

@@ -17,9 +17,9 @@ class OpenAIService
      * Default configuration
      */
     private const DEFAULT_MODEL = 'gpt-4o-mini';
-    private const DEFAULT_MAX_TOKENS = 2000; // Reduced for faster responses
+    private const DEFAULT_MAX_TOKENS = 4000; // Increased for better responses
     private const DEFAULT_TEMPERATURE = 0.2;
-    private const DEFAULT_TIMEOUT = 45; // Reduced from 90 to 45 seconds for faster failure detection
+    private const DEFAULT_TIMEOUT = 60; // Increased timeout for better responses
 
     /**
      * Call OpenAI API with the given parameters
@@ -57,15 +57,30 @@ class OpenAIService
                 'top_p' => 0.95,
             ], $options);
 
-            $response = Http::withToken($apiKey)
-                ->timeout($config['timeout'])
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => $config['model'],
-                    'messages' => $normalizedMessages,
-                    'temperature' => $config['temperature'],
-                    'max_tokens' => $config['max_tokens'],
-                    'top_p' => $config['top_p'] ?? 0.95,
+            // Configure HTTP client with SSL verification
+            // For Windows development, we may need to disable SSL verification
+            // In production, ensure proper CA certificates are configured
+            $httpClient = Http::withToken($apiKey)
+                ->timeout($config['timeout']);
+            
+            // Disable SSL verification for development (Windows SSL certificate issue)
+            // Check if we're in a development environment or if explicitly disabled via env
+            $disableSSLVerify = env('OPENAI_DISABLE_SSL_VERIFY', false);
+            $isDevelopment = app()->environment(['local', 'development', 'testing']);
+            
+            if ($isDevelopment || $disableSSLVerify) {
+                $httpClient = $httpClient->withOptions([
+                    'verify' => false, // Disable SSL verification for development
                 ]);
+            }
+            
+            $response = $httpClient->post('https://api.openai.com/v1/chat/completions', [
+                'model' => $config['model'],
+                'messages' => $normalizedMessages,
+                'temperature' => $config['temperature'],
+                'max_tokens' => $config['max_tokens'],
+                'top_p' => $config['top_p'] ?? 0.95,
+            ]);
 
             if ($response->successful()) {
                 $data = $response->json();

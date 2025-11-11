@@ -35,5 +35,25 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        // Add CORS headers to exception responses
+        $exceptions->render(function (\Throwable $e, $request) {
+            if ($request->is('api/*')) {
+                $origin = $request->headers->get('Origin');
+                $allowedOrigins = ['http://localhost:3000', 'http://127.0.0.1:3000', env('FRONTEND_URL', 'http://localhost:3000')];
+                $allowedOrigin = in_array($origin, $allowedOrigins) ? $origin : $allowedOrigins[0];
+                
+                $response = response()->json([
+                    'message' => $e->getMessage(),
+                    'error' => config('app.debug') ? $e->getTraceAsString() : 'Server Error'
+                ], 500);
+                
+                $response->headers->set('Access-Control-Allow-Origin', $allowedOrigin);
+                $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+                $response->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, Origin');
+                $response->headers->set('Access-Control-Allow-Credentials', 'true');
+                $response->headers->set('Access-Control-Max-Age', '86400');
+                
+                return $response;
+            }
+        });
     })->create();

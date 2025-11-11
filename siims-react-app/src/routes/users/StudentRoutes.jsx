@@ -301,6 +301,10 @@ const StudentRoutes = {
           };
         } catch (error) {
           console.log(error);
+          return {
+            initial_weekly_reports: [],
+            applicationId: null,
+          }; // Return default values on error
         }
       },
     },

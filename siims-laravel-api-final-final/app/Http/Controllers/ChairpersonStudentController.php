@@ -207,7 +207,8 @@ class ChairpersonStudentController extends Controller
         }
         // OPTIMIZED: Get all students with selective eager loading to prevent N+1 queries
         // Only load relationships that are actually needed for the transform
-        $students = Student::select('id', 'user_id', 'coordinator_id', 'section_id', 'program_id', 'company_id')
+        // Note: Using separate queries for relationships that cause ambiguity
+        $students = Student::where('program_id', $program->id)
             ->with([
                 'user:id,first_name,middle_name,last_name,email', // Only needed user fields
                 'coordinator:id,user_id', // Only coordinator ID and user_id for relationship
@@ -216,14 +217,42 @@ class ChairpersonStudentController extends Controller
                 'section:id,name,coordinator_id', // Only section name and coordinator_id
                 'section.coordinator:id,user_id', // Section's coordinator if needed
                 'section.coordinator.user:id,first_name,middle_name,last_name', // Section coordinator user
-                'latestApplication:id,student_id,work_post_id', // Only IDs for relationship
-                'latestApplication.workPost:id,office_id', // Only IDs
-                'latestApplication.workPost.office:id,company_id', // Only IDs
-                'latestApplication.workPost.office.company:id,name', // Only company name
-                'workExperiences:id,student_id,company_name,created_at', // Only needed fields
             ])
-            ->where('program_id', $program->id)
             ->get();
+        
+        // Load latestApplication separately to avoid ambiguous column errors
+        // Only load if we have students
+        if ($students->isNotEmpty()) {
+            $studentIds = $students->pluck('id')->toArray();
+            
+            // Get latest application per student using a subquery to avoid ambiguity
+            $latestApplications = \App\Models\Application::whereIn('student_id', $studentIds)
+                ->whereIn('id', function($query) use ($studentIds) {
+                    $query->select(\DB::raw('MAX(id)'))
+                        ->from('applications')
+                        ->whereIn('student_id', $studentIds)
+                        ->groupBy('student_id');
+                })
+                ->with([
+                    'workPost:id,office_id',
+                    'workPost.office:id,company_id',
+                    'workPost.office.company:id,name',
+                ])
+                ->get()
+                ->keyBy('student_id');
+            
+            // Load workExperiences separately to avoid ambiguous column errors
+            $workExperiences = \App\Models\WorkExperience::whereIn('student_id', $studentIds)
+                ->select('id', 'student_id', 'company_name', 'created_at')
+                ->get()
+                ->groupBy('student_id');
+            
+            // Attach relationships manually
+            foreach ($students as $student) {
+                $student->setRelation('latestApplication', $latestApplications->get($student->id));
+                $student->setRelation('workExperiences', $workExperiences->get($student->id) ?? collect());
+            }
+        }
 
         $transformedStudents = $students->map(function ($student) {
             return $this->transform($student);

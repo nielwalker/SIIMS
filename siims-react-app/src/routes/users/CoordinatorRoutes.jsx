@@ -50,6 +50,7 @@ const CoordinatorRoutes = {
       return { userRoles };
     } catch (error) {
       console.log(error);
+      return { userRoles: [] }; // Return default values on error
     }
   },
   children: [
@@ -179,6 +180,7 @@ const CoordinatorRoutes = {
               return { students };
             } catch (error) {
               console.log(error);
+              return { students: [] }; // Return default values on error
             }
           },
         },
@@ -209,6 +211,7 @@ const CoordinatorRoutes = {
                   return { applications, student };
                 } catch (error) {
                   console.log(error);
+                  return { applications: [], student: null }; // Return default values on error
                 }
               },
             },
@@ -231,6 +234,7 @@ const CoordinatorRoutes = {
                   return { application };
                 } catch (error) {
                   console.log(error);
+                  return { application: null }; // Return default values on error
                 }
               },
             },

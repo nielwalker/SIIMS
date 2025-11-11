@@ -69,6 +69,7 @@ const AdminRoutes = {
       return { userRoles };
     } catch (error) {
       console.log(error);
+      return { userRoles: [] }; // Return default values on error
     }
   },
 
@@ -119,6 +120,7 @@ const AdminRoutes = {
           };
         } catch (error) {
           console.log(error);
+          return { myGroups: [] }; // Return default values on error
         }
       },
       children: [

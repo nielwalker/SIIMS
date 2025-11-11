@@ -56,6 +56,7 @@ const ChairpersonRoutes = {
       return { userRoles, dashboard };
     } catch (error) {
       console.log(error);
+      return { userRoles: [], dashboard: null }; // Return default values on error
     }
   },
   children: [

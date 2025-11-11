@@ -49,6 +49,7 @@ const SupervisorRoutes = {
       return { userRoles };
     } catch (error) {
       console.log(error);
+      return { userRoles: [] }; // Return default values on error
     }
   },
   children: [
@@ -96,6 +97,7 @@ const SupervisorRoutes = {
           };
         } catch (error) {
           console.log(error);
+          return { list_of_interns: [] }; // Return default values on error
         }
       },
     },
