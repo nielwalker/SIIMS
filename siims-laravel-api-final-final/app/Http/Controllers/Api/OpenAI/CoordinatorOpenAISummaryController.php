@@ -91,7 +91,7 @@ class CoordinatorOpenAISummaryController extends Controller
             // Build prompt using CoordinatorPromptBuilder
             $prompt = $this->promptBuilder->buildPrompt($activities, $learnings, $assessment);
 
-            $response = $this->openAIService->callSimple($prompt, 'gpt-3.5-turbo', 300, 0.6, 30);
+            $response = $this->openAIService->callSimple($prompt, 'gpt-4o-mini', 300, 0.6, 30);
             
             if ($response['success']) {
                 $clean = $this->openAIService->cleanText($response['summary']);

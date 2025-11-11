@@ -95,7 +95,7 @@ class CoordinatorSummaryAdapter
                 
                 // Build prompt for coordinator
                 $prompt = $this->coordinatorPromptBuilder->buildPrompt($activities, $learnings, '');
-                $response = $this->openAIService->callSimple($prompt, 'gpt-3.5-turbo', 300, 0.6, 30);
+                $response = $this->openAIService->callSimple($prompt, 'gpt-4o-mini', 300, 0.6, 30);
                 
                 if ($response['success']) {
                     $summary = $this->openAIService->cleanText($response['summary'] ?? $response['content'] ?? '');

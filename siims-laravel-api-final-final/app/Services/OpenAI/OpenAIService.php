@@ -143,7 +143,7 @@ class OpenAIService
      */
     public function callSimple(
         string $prompt,
-        string $model = 'gpt-3.5-turbo',
+        string $model = 'gpt-4o-mini',
         int $maxTokens = 500,
         float $temperature = 0.7,
         int $timeout = 30
