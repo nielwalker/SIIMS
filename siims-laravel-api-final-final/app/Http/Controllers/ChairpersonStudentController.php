@@ -163,7 +163,8 @@ class ChairpersonStudentController extends Controller
             'id' => $user->id,
             'user_id' => $user->id,
             'program_id' => $validatedCredentials['program_id'],
-            'coordinator_id' => $validatedCredentials['coordinator_id'],
+            'coordinator_id' => $validatedCredentials['coordinator_id'] ?? null,
+            'section_id' => $validatedCredentials['section_id'] ?? null,
             // Allow optional direct company assignment on create
             'company_id' => $validatedCredentials['company_id'] ?? null,
             'age' => $validatedCredentials['age'],
@@ -259,28 +260,17 @@ class ChairpersonStudentController extends Controller
             }
         }
 
-        // Only show section if it belongs to the assigned coordinator
+        // Show section if student has one assigned
         $section = null;
         $sectionName = null;
         if ($student->section) {
-            // Check if section's coordinator matches the student's assigned coordinator
-            $sectionCoordinatorId = $student->section->coordinator_id ?? null;
-            if ($sectionCoordinatorId && $coordinatorId && (string)$sectionCoordinatorId === (string)$coordinatorId) {
-                // Section belongs to the assigned coordinator - show it
-                $section = [
-                    "id" => $student->section->id,
-                    "name" => $student->section->name,
-                ];
-                $sectionName = $student->section->name;
-            } elseif (!$coordinatorId && $sectionCoordinatorId) {
-                // Student has no coordinator but section has one - still show it (will be used as fallback)
-                $section = [
-                    "id" => $student->section->id,
-                    "name" => $student->section->name,
-                ];
-                $sectionName = $student->section->name;
-            }
-            // If section's coordinator doesn't match student's coordinator, don't show it (section = null)
+            // Always show the section if the student has one assigned
+            // This ensures sections are visible in the table after assignment
+            $section = [
+                "id" => $student->section->id,
+                "name" => $student->section->name,
+            ];
+            $sectionName = $student->section->name;
         }
 
         return [

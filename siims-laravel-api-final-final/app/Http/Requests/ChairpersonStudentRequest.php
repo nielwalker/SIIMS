@@ -39,6 +39,7 @@ class ChairpersonStudentRequest extends FormRequest
                 'postal_code' => 'nullable|string',
                 'program_id' => 'required|integer',
                 'coordinator_id' => 'nullable|integer',
+                'section_id' => 'nullable|string|exists:sections,id',
                 'age' => 'nullable|integer',
                 'date_of_birth' => 'nullable|date',
             ];
