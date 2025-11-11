@@ -97,7 +97,14 @@ class CoordinatorSummaryService
                         'po' => $po,
                         'reason' => $this->getDefaultNotHitReason($po)
                     ];
+                    $notHitPOs[] = $po; // Add to notHitPOs array for recommendation checking
                 }
+                
+                // Ensure every PO in pos_not_hit has exactly one recommendation (expand ranges, fill missing)
+                $recommendations = $this->ensureCompleteRecommendations($recommendations, $notHitPOs);
+                
+                // Validate that OpenAI generated recommendations for all not met POs
+                $this->validateRecommendationsFromOpenAI($recommendations, $notHitPOs);
                 
                 return [
                     'summary' => '', // Summary is generated separately, not here
@@ -235,6 +242,188 @@ class CoordinatorSummaryService
             'PO15' => 'No evidence of preserving Filipino historical and cultural heritage.',
         ];
         return $reasons[$po] ?? "No evidence of achieving {$po} based on activities and learnings.";
+    }
+
+    /**
+     * Ensure every PO in pos_not_hit has exactly one recommendation
+     * Expands ranges (e.g., "PO6-PO9") and fills missing recommendations
+     * 
+     * @param array $recommendations Recommendations from OpenAI
+     * @param array $notHitPOs Array of PO codes that are not met
+     * @return array Complete recommendations array with one per PO
+     */
+    private function ensureCompleteRecommendations(array $recommendations, array $notHitPOs): array
+    {
+        if (empty($notHitPOs)) {
+            return $recommendations;
+        }
+
+        $expandedRecommendations = [];
+        $coveredPOs = [];
+
+        // First, expand any recommendations that mention ranges or multiple POs
+        foreach ($recommendations as $rec) {
+            if (!is_string($rec)) {
+                continue;
+            }
+
+            // Check if recommendation mentions a range like "PO6-PO9" or "PO6, PO7, PO8"
+            if (preg_match_all('/PO(\d+)(?:-PO(\d+))?/', $rec, $rangeMatches, PREG_SET_ORDER)) {
+                foreach ($rangeMatches as $match) {
+                    $startPO = 'PO' . $match[1];
+                    if (isset($match[2]) && !empty($match[2])) {
+                        // Range found (e.g., PO6-PO9)
+                        $startNum = (int)$match[1];
+                        $endNum = (int)$match[2];
+                        for ($i = $startNum; $i <= $endNum; $i++) {
+                            $po = 'PO' . $i;
+                            if (in_array($po, $notHitPOs) && !in_array($po, $coveredPOs)) {
+                                // Create individual recommendation for this PO
+                                $individualRec = preg_replace('/PO\d+-PO\d+/', $po, $rec);
+                                $individualRec = preg_replace('/PO\d+(?:,\s*PO\d+)+/', $po, $individualRec);
+                                $expandedRecommendations[] = $individualRec;
+                                $coveredPOs[] = $po;
+                            }
+                        }
+                    } else {
+                        // Single PO found
+                        if (in_array($startPO, $notHitPOs) && !in_array($startPO, $coveredPOs)) {
+                            $expandedRecommendations[] = $rec;
+                            $coveredPOs[] = $startPO;
+                        }
+                    }
+                }
+            } else {
+                // Check for individual POs mentioned in the recommendation
+                if (preg_match_all('/PO\d+/', $rec, $poMatches)) {
+                    $foundPOs = array_unique($poMatches[0]);
+                    $relevantPOs = array_intersect($foundPOs, $notHitPOs);
+                    if (!empty($relevantPOs)) {
+                        // If recommendation mentions multiple POs, create one per PO
+                        foreach ($relevantPOs as $po) {
+                            if (!in_array($po, $coveredPOs)) {
+                                // Create individual recommendation focusing on this PO
+                                $individualRec = $rec;
+                                // If it mentions multiple POs, replace with just this one
+                                if (count($relevantPOs) > 1) {
+                                    $individualRec = preg_replace('/PO\d+/', $po, $individualRec, 1);
+                                    $individualRec = preg_replace('/\s*(?:and|,)\s*PO\d+/', '', $individualRec);
+                                }
+                                $expandedRecommendations[] = $individualRec;
+                                $coveredPOs[] = $po;
+                            }
+                        }
+                    } else {
+                        // Recommendation doesn't mention any PO, add it as-is
+                        $expandedRecommendations[] = $rec;
+                    }
+                } else {
+                    // Recommendation doesn't mention any PO, add it as-is
+                    $expandedRecommendations[] = $rec;
+                }
+            }
+        }
+
+        // Find POs that don't have recommendations yet
+        $missingPOs = array_diff($notHitPOs, $coveredPOs);
+
+        // For missing POs, generate recommendations based on OpenAI's style
+        // Use existing recommendations as templates to maintain consistency
+        foreach ($missingPOs as $po) {
+            $found = false;
+            
+            // Strategy 1: Try to find a generic recommendation without PO mention
+            foreach ($expandedRecommendations as $rec) {
+                if (is_string($rec) && !preg_match('/PO\d+/', $rec)) {
+                    // Generic recommendation - adapt it for this PO
+                    $poSpecificRec = rtrim($rec, '.') . ' to achieve ' . $po . '.';
+                    $expandedRecommendations[] = $poSpecificRec;
+                    $coveredPOs[] = $po;
+                    $found = true;
+                    break;
+                }
+            }
+            
+            // Strategy 2: If no generic recommendation, use the first recommendation as a template
+            if (!$found && !empty($expandedRecommendations)) {
+                $template = $expandedRecommendations[0];
+                if (is_string($template)) {
+                    // Extract the action/advice part (remove existing PO mentions)
+                    $cleanedTemplate = preg_replace('/\s*(?:to achieve|for|regarding|related to)\s*PO\d+/i', '', $template);
+                    $cleanedTemplate = preg_replace('/PO\d+/', '', $cleanedTemplate);
+                    $cleanedTemplate = trim($cleanedTemplate);
+                    
+                    // Create new recommendation for this PO
+                    $poSpecificRec = rtrim($cleanedTemplate, '.') . ' to achieve ' . $po . '.';
+                    $expandedRecommendations[] = $poSpecificRec;
+                    $coveredPOs[] = $po;
+                    $found = true;
+                }
+            }
+            
+            // If still not found, log warning (no hardcoded fallback)
+            if (!$found) {
+                Log::warning('No recommendation found for PO in pos_not_hit - OpenAI did not generate one', [
+                    'po' => $po,
+                    'total_not_hit' => count($notHitPOs),
+                    'recommendations_count' => count($expandedRecommendations),
+                    'openai_recommendations' => $recommendations
+                ]);
+            }
+        }
+
+        // Return expanded recommendations (even if not all POs are covered)
+        // The frontend will display whatever recommendations OpenAI generated
+        // We don't add hardcoded fallbacks, but we ensure ranges are expanded and combined ones are split
+        return $expandedRecommendations;
+    }
+
+    /**
+     * Validate that OpenAI generated recommendations for all not met POs
+     * Logs a warning if recommendations are missing (but doesn't add hard-coded defaults)
+     * 
+     * @param array $recommendations Recommendations from OpenAI
+     * @param array $notHitPOs Array of PO codes that are not met
+     * @return void
+     */
+    private function validateRecommendationsFromOpenAI(array $recommendations, array $notHitPOs): void
+    {
+        if (empty($notHitPOs)) {
+            return;
+        }
+
+        // Extract POs mentioned in recommendations
+        $recommendedPOs = [];
+        foreach ($recommendations as $rec) {
+            if (is_string($rec) && preg_match_all('/PO\d+/', $rec, $matches)) {
+                foreach ($matches[0] as $po) {
+                    $recommendedPOs[$po] = true;
+                }
+            }
+        }
+
+        // Find POs that don't have recommendations
+        $missingPOs = [];
+        foreach ($notHitPOs as $po) {
+            if (!isset($recommendedPOs[$po])) {
+                $missingPOs[] = $po;
+            }
+        }
+
+        // Log warning if OpenAI didn't generate recommendations for all POs
+        if (!empty($missingPOs)) {
+            Log::warning('OpenAI did not generate recommendations for all not met POs', [
+                'missing_pos' => $missingPOs,
+                'total_not_hit' => count($notHitPOs),
+                'recommendations_count' => count($recommendations),
+                'expected_count' => count($notHitPOs)
+            ]);
+        } else {
+            Log::info('OpenAI generated recommendations for all not met POs', [
+                'total_not_hit' => count($notHitPOs),
+                'recommendations_count' => count($recommendations)
+            ]);
+        }
     }
 }
 

@@ -183,6 +183,37 @@ class CoordinatorSummaryController extends Controller
             }
         }
 
+        // Use recommendations directly from OpenAI (no hard-coded fallbacks)
+        $recommendations = $poAnalysisResult['recommendations'] ?? [];
+        
+        // Validate that OpenAI generated recommendations (log warning if missing, but don't add defaults)
+        if (!empty($poAnalysisResult['pos_not_hit'])) {
+            $notHitPOs = array_map(function($item) {
+                return is_string($item) ? $item : ($item['po'] ?? '');
+            }, $poAnalysisResult['pos_not_hit']);
+            $notHitPOs = array_filter($notHitPOs, function($po) {
+                return !empty($po) && preg_match('/^PO\d+$/', $po);
+            });
+            
+            // Check if OpenAI generated enough recommendations
+            $recommendedPOs = [];
+            foreach ($recommendations as $rec) {
+                if (is_string($rec) && preg_match_all('/PO\d+/', $rec, $matches)) {
+                    foreach ($matches[0] as $po) {
+                        $recommendedPOs[$po] = true;
+                    }
+                }
+            }
+            $missingPOs = array_diff($notHitPOs, array_keys($recommendedPOs));
+            if (!empty($missingPOs)) {
+                Log::warning('Coordinator: OpenAI did not generate recommendations for all not met POs', [
+                    'missing_pos' => $missingPOs,
+                    'total_not_hit' => count($notHitPOs),
+                    'recommendations_count' => count($recommendations)
+                ]);
+            }
+        }
+
         // Merge summary and PO analysis results
         return response()->json([
             'summary' => $summary,
@@ -194,7 +225,7 @@ class CoordinatorSummaryController extends Controller
             'pos_not_hit' => $poAnalysisResult['pos_not_hit'] ?? [],
             'po_word_hit' => $poAnalysisResult['po_word_hit'] ?? [],
             'po_context_hit' => $poAnalysisResult['po_context_hit'] ?? [],
-            'recommendations' => $poAnalysisResult['recommendations'] ?? [],
+            'recommendations' => $recommendations, // Use enhanced recommendations
             'corrected_activities' => $poAnalysisResult['corrected_activities'] ?? $activities,
             'corrected_learnings' => $poAnalysisResult['corrected_learnings'] ?? $learnings,
         ], 200, [
@@ -203,6 +234,7 @@ class CoordinatorSummaryController extends Controller
             'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
         ]);
     }
+
     
 }
 

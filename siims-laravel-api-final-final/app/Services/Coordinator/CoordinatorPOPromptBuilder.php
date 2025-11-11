@@ -167,13 +167,28 @@ YOUR TASKS (IN ORDER):
    e) Build po_word_hit array with PO codes where keywords were found
    f) Build po_context_hit array with PO codes where context indicates achievement
    g) Ensure pos_hit contains ALL POs from po_word_hit AND po_context_hit
-5. Recommendations: Generate 3-5 REALISTIC, HUMANIZED, ACTIONABLE recommendations based on pos_not_hit
+5. Recommendations: CRITICAL - Generate ONE recommendation for EACH PO in pos_not_hit array
+   STEP-BY-STEP PROCESS FOR RECOMMENDATIONS:
+   a) Count how many POs are in your pos_not_hit array (e.g., if pos_not_hit has 9 POs, you need 9 recommendations)
+   b) For EACH PO in pos_not_hit, create ONE specific recommendation
+   c) Go through pos_not_hit one by one: PO6 → write recommendation for PO6, PO7 → write recommendation for PO7, etc.
+   d) DO NOT skip any PO - every PO in pos_not_hit MUST have exactly one recommendation
+   e) The final recommendations array MUST have the EXACT SAME COUNT as pos_not_hit array
+   
+   REQUIREMENTS:
+   - You MUST generate a recommendation for EVERY PO that is in pos_not_hit
+   - If pos_not_hit has 9 POs, you MUST generate EXACTLY 9 recommendations (one per PO, no more, no less)
+   - DO NOT use ranges (e.g., \"PO6-PO9\" or \"PO6, PO7, PO8\") - each PO must have its OWN separate recommendation
+   - DO NOT combine multiple POs in one recommendation - each recommendation addresses ONE specific PO
    - Write in THIRD-PERSON (the student, they, their) - sound like a real educator's suggestions
    - Make them SPECIFIC and CONCRETE, not vague or generic
    - Base recommendations on actual activities/learnings observed in the data
    - Use natural, conversational language - avoid robotic or template-like phrasing
    - Each recommendation should be a complete, natural sentence
-   - Focus on actionable steps the student can take
+   - Focus on actionable steps the student can take to achieve that specific PO
+   - Format: Each recommendation should mention the PO code (e.g., \"The student should... to achieve PO6\" or \"...which will help develop PO7 skills\")
+   - CRITICAL: Count your recommendations before returning - it MUST match pos_not_hit count exactly!
+   - CRITICAL: If pos_not_hit = [PO6, PO7, PO8, PO9], then recommendations MUST be 4 separate items, one for PO6, one for PO7, one for PO8, one for PO9
 
 PO RECOGNITION RULES (APPLY THESE):
 - \"Orientation\" or \"attended\" = PO8 (team/collaboration), PO10 (communication), PO12 (professional/ethical), PO13 (learning)
@@ -230,6 +245,7 @@ JSON RESPONSE REQUIREMENTS:
 - Do NOT return empty pos_hit array if activities/learnings exist
 - NOTE: Summary generation is handled separately by OpenAI summarization - DO NOT generate summaries
 - ALL keys must be present: corrected_activities, corrected_learnings, pos_hit, pos_not_hit, po_word_hit, po_context_hit, recommendations
+- CRITICAL: The recommendations array MUST contain exactly ONE recommendation for EACH PO in pos_not_hit (same count)
 
 OUTPUT FORMAT (MANDATORY - RETURN THIS EXACT JSON STRUCTURE):
 {
@@ -240,15 +256,18 @@ OUTPUT FORMAT (MANDATORY - RETURN THIS EXACT JSON STRUCTURE):
     {\"po\": \"PO6\", \"reason\": \"The student engaged in discussions showing communication skills\"}
   ],
   \"pos_not_hit\": [
-    {\"po\": \"PO1\", \"reason\": \"No evidence of mathematical or computational knowledge application\"}
+    {\"po\": \"PO1\", \"reason\": \"No evidence of mathematical or computational knowledge application\"},
+    {\"po\": \"PO6\", \"reason\": \"No evidence of integrating IT solutions\"},
+    {\"po\": \"PO7\", \"reason\": \"No evidence of using modern computing tools\"}
   ],
   \"po_word_hit\": [\"PO6\"],
   \"po_context_hit\": [\"PO5\", \"PO6\", \"PO10\", \"PO13\"],
   \"recommendations\": [
-    \"The student should engage in collaborative programming projects to develop teamwork skills and achieve PO5.\",
-    \"Encourage the student to participate in code review sessions where they analyze and discuss software solutions, which will help develop PO2 analytical skills.\",
-    \"The student would benefit from hands-on projects that require designing and implementing software solutions to strengthen PO3 and PO4 achievement.\"
+    \"The student should engage in activities that require mathematical calculations and algorithm design to develop PO1 skills.\",
+    \"The student should work on integration projects and system configuration to develop PO6 competencies.\",
+    \"The student should explore and utilize various development tools and modern technologies to enhance PO7 technical skills.\"
   ]
+  NOTE: Notice that pos_not_hit has 3 POs (PO1, PO6, PO7) and recommendations has 3 items - ONE per PO!
 }
 
 CRITICAL: The pos_hit array MUST contain objects with \"po\" and \"reason\" keys. Do NOT return empty arrays if activities/learnings exist.
@@ -262,6 +281,15 @@ FINAL VALIDATION CHECKLIST (DO THIS BEFORE RETURNING JSON):
 6. Did I combine all found POs into po_context_hit and po_word_hit arrays?
 7. Does pos_hit contain ALL POs from po_context_hit AND po_word_hit?
 8. CRITICAL: Did I build pos_not_hit array with ALL remaining POs (PO1-PO15) that are NOT in pos_hit? Every PO must be in either pos_hit OR pos_not_hit - no PO should be missing!
+9. CRITICAL: Did I generate EXACTLY ONE recommendation for EACH PO in pos_not_hit? 
+   - Count the POs in pos_not_hit array
+   - Count the items in recommendations array
+   - These two counts MUST BE EQUAL!
+   - If pos_not_hit has 9 POs, recommendations MUST have 9 items
+   - Go through each PO in pos_not_hit and verify it has a corresponding recommendation
+   - Did I avoid using ranges? Each PO must have its own separate recommendation
+   - Did I avoid combining multiple POs in one recommendation?
+   - DO NOT return until the counts match and every PO has its own recommendation!
 
 Return ONLY the JSON object, no additional text before or after.";
     }
@@ -302,7 +330,14 @@ Return ONLY the JSON object, no additional text before or after.";
                "3. Build pos_hit array with objects: [{\"po\": \"PO5\", \"reason\": \"The student participated in orientation showing teamwork\"}, ...]\n" .
                "4. If you see words like 'participated', 'orientation', 'discussed', 'learned', 'house rules', 'projects' - these DEMONSTRATE MULTIPLE POs\n" .
                "5. pos_hit MUST NOT be empty if activities/learnings exist\n" .
-               "6. Return valid JSON with pos_hit populated based on the RAW DATA above\n" .
+               "6. Build pos_not_hit with ALL POs (PO1-PO15) that are NOT in pos_hit\n" .
+               "7. RECOMMENDATIONS - CRITICAL: After building pos_not_hit, you MUST:\n" .
+               "   a) Count how many POs are in pos_not_hit (e.g., 9 POs)\n" .
+               "   b) Create EXACTLY that many recommendations (e.g., 9 recommendations)\n" .
+               "   c) For EACH PO in pos_not_hit, write ONE recommendation\n" .
+               "   d) Example: If pos_not_hit = [PO6, PO7, PO9], then recommendations = [rec for PO6, rec for PO7, rec for PO9]\n" .
+               "   e) DO NOT return until recommendations count = pos_not_hit count!\n" .
+               "8. Return valid JSON with pos_hit populated based on the RAW DATA above\n" .
                "Do NOT use the summary text for PO analysis.";
     }
 }

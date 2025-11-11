@@ -243,14 +243,23 @@ class OpenAIService
             return $prefix . 'completed their weekly activities and learning outcomes.';
         }
 
-        // Check if already starts with the desired phrase
+        // Check if already starts with the desired phrase (exact match)
         $escapedPrefix = preg_quote($prefix, '/');
         if (preg_match('/^' . $escapedPrefix . '/i', $t)) {
             return $t;
         }
 
-        // Remove any leading connectors
+        // Remove any existing week prefixes to avoid duplication
+        // Remove: "For this week, those students", "For week X, those students", "For overall, the students"
+        $t = preg_replace('/^For\s+(this\s+week|week\s+\d+),\s+those\s+students\s+/i', '', $t);
+        $t = preg_replace('/^For\s+overall,\s+the\s+students\s+/i', '', $t);
+        $t = preg_replace('/^For\s+overall,\s+/i', '', $t); // Also handle "For overall, " without "the students"
+        $t = preg_replace('/^For\s+this\s+week,\s+the\s+student\s+/i', '', $t);
+        $t = preg_replace('/^For\s+week\s+\d+,\s+the\s+student\s+/i', '', $t);
+        
+        // Remove any other leading connectors
         $t = preg_replace('/^(In\s+week\s+\d+\s*,\s*|This\s+week\s*,\s*|In\s+this\s+week\s*,\s*)/i', '', $t);
+        
         return $prefix . ltrim($t);
     }
 

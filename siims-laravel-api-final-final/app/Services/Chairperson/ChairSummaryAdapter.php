@@ -247,7 +247,9 @@ class ChairSummaryAdapter
         // Generate summary using OpenAI
         if (!empty($clean) && $this->openAIService->isAvailable()) {
             try {
-                $prompt = $this->promptBuilder->buildSummaryPrompt($activities, $learnings, '', 'overall_summary');
+                // Determine prompt type: overall if week is null/0, otherwise weekly
+                $promptType = (!empty($week) && $week > 0) ? 'chair_week' : 'overall_summary';
+                $prompt = $this->promptBuilder->buildSummaryPrompt($activities, $learnings, '', $promptType);
                 $response = $this->openAIService->call($prompt, [
                     'model' => 'gpt-4o-mini',
                     'max_tokens' => 3000,
@@ -257,10 +259,18 @@ class ChairSummaryAdapter
                 
                 if ($response['success'] && $response['content']) {
                     $summary = $this->openAIService->cleanText($response['content']);
-                    if ($week) {
+                    // Remove any duplicate prefixes that OpenAI might have added
+                    // The prompt builder already instructs OpenAI to add prefix, but we ensure consistency here
+                    $summary = preg_replace('/^For\s+(this\s+week|week\s+\d+),\s+those\s+students\s+/i', '', $summary);
+                    $summary = preg_replace('/^For\s+overall,\s+the\s+students\s+/i', '', $summary);
+                    
+                    // Apply the correct prefix based on week
+                    // If week is null or 0, it means "overall"
+                    if (!empty($week) && $week > 0) {
                         $summary = $this->openAIService->enforceWeekPrefix($summary, "For week {$week}, those students ");
                     } else {
-                        $summary = $this->openAIService->enforceWeekPrefix($summary, 'For this week, those students ');
+                        // Overall case - use "For overall, the students"
+                        $summary = $this->openAIService->enforceWeekPrefix($summary, 'For overall, the students ');
                     }
                     $usedGPT = true;
                 } else {

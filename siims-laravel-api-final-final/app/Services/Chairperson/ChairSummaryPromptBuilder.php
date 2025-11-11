@@ -57,7 +57,7 @@ LEARNING OUTCOMES: {$learningsText}
 ASSESSMENT: {$assessment}
 
 WRITING REQUIREMENTS:
-1. Begin with 'For overall, '
+1. Begin EXACTLY with: 'For overall, the students '
 2. Write EXCLUSIVELY in third person (students, they, their, them) - NEVER use first person (I, me, my, we, us, our)
 3. Use sophisticated vocabulary and complex sentence structures
 4. Ensure perfect grammar, punctuation, and sentence flow

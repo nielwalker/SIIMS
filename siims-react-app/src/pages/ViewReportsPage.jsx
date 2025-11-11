@@ -23,6 +23,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
   const [poAnalysisLoading, setPoAnalysisLoading] = useState(false);
   const [posHit, setPosHit] = useState([]);
   const [posNotHit, setPosNotHit] = useState([]);
+  const [recommendations, setRecommendations] = useState([]);
   const [poError, setPoError] = useState("");
   const [poScores, setPoScores] = useState(Array.from({ length: 15 }, () => 0));
   const [wordBasedContributions, setWordBasedContributions] = useState(Array.from({ length: 15 }, () => 0));
@@ -385,6 +386,13 @@ const ViewReportsPage = ({ authorizeRole }) => {
           setPosNotHit([]);
         }
         
+        // Extract recommendations from backend
+        if (data?.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0) {
+          setRecommendations(data.recommendations);
+        } else {
+          setRecommendations([]);
+        }
+        
         // Calculate PO scores for graph (use allEntries filtered by week)
         const weekEntries = allEntries.filter(e => e.week_number === Number(selectedWeek));
         calculatePOScores(data, weekEntries);
@@ -403,6 +411,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
         }
         setPosHit([]);
         setPosNotHit([]);
+        setRecommendations([]);
       } finally {
         setSummaryLoading(false);
         setPoAnalysisLoading(false);
@@ -719,7 +728,29 @@ const ViewReportsPage = ({ authorizeRole }) => {
           </div>
         )}
 
-        {/* Coordinator view: recommendations hidden (chairperson only) */}
+        {/* Recommendations for Improvement */}
+        {selectedStudentId && recommendations.length > 0 && (
+          <div className="mt-6 bg-emerald-50 border border-emerald-200 rounded-lg p-4">
+            <h5 className="text-lg font-semibold text-emerald-800 mb-3">Recommendations for Improvement</h5>
+            {Array.isArray(recommendations) && recommendations.every(r => typeof r === 'string') ? (
+              // AI-generated recommendations (array of strings)
+              <ul className="list-disc list-inside space-y-2 text-sm text-emerald-800 leading-relaxed">
+                {recommendations.map((rec, idx) => (
+                  <li key={`rec-${idx}`}>{rec}</li>
+                ))}
+              </ul>
+            ) : (
+              // Fallback format (array of objects)
+              <ul className="list-disc list-inside space-y-2 text-sm text-emerald-800 leading-relaxed">
+                {recommendations.map((rec, idx) => (
+                  <li key={`rec-${idx}`}>
+                    {typeof rec === 'string' ? rec : `${rec.po || ''}: ${rec.tip || rec.recommendation || ''}`}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {selectedStudentId ? (
           (() => {

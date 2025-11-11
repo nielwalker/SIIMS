@@ -530,13 +530,12 @@ class SummaryEvaluationService
             ],
         ]);
         
-        // Log formatted output to Laravel log (for easy reading)
         Log::info($output);
         
         // Output to error_log (visible in PHP error log and console)
         error_log($output);
         
-        // Also output to console if running in CLI mode
+        // CLI mode
         if (php_sapi_name() === 'cli') {
             echo $output;
         }
