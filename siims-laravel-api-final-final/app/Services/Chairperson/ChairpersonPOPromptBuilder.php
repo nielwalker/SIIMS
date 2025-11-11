@@ -296,40 +296,39 @@ Return ONLY the JSON object, no additional text before or after.";
 
     /**
      * Build user message for chairperson (multiple students)
+     * OPTIMIZED: Convert activities and learnings to JSON for faster OpenAI processing
      */
     private function buildUserMessage(string $text, array $activities, array $learnings): string
     {
-        // Prepare activities and learnings text
-        if (empty($activities) && empty($learnings)) {
-            $activitiesText = $text;
-            $learningsText = '';
-        } else {
-            $activitiesText = !empty($activities) ? implode("\n", array_map(function($a, $i) {
-                return ($i + 1) . ". " . $a;
-            }, $activities, array_keys($activities))) : 'No specific activities documented.';
-            
-            $learningsText = !empty($learnings) ? implode("\n", array_map(function($l, $i) {
-                return ($i + 1) . ". " . $l;
-            }, $learnings, array_keys($learnings))) : 'No specific learnings documented.';
-        }
+        // OPTIMIZATION: Convert activities and learnings to structured JSON format
+        // This makes it faster for OpenAI to parse and process the data
+        // Use compact JSON (no pretty print) to reduce token count and speed up processing
+        $dataJson = [
+            'activities' => !empty($activities) ? $activities : [],
+            'learnings' => !empty($learnings) ? $learnings : [],
+            'total_activities' => count($activities),
+            'total_learnings' => count($learnings)
+        ];
         
-        $summaryText = $text;
-        $poAnalysisText = "=== RAW WEEKLY REPORT DATA (SOURCE OF TRUTH FOR PO ANALYSIS) ===\n\n" .
-                         "STUDENT ACTIVITIES/TASKS (from database - MULTIPLE STUDENTS):\n" . $activitiesText . "\n\n" .
-                         "STUDENT LEARNINGS (from database - MULTIPLE STUDENTS):\n" . $learningsText;
+        // Use compact JSON (no pretty print) to reduce tokens and speed up processing
+        $jsonData = json_encode($dataJson, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        
+        // Build concise prompt with JSON data
+        $summaryText = substr($text, 0, 500); // Limit summary text to reduce tokens
         
         return "=== IGNORE THIS FOR PO ANALYSIS ===\n" .
                "SUMMARY GENERATION DATA (for summary only, can vary):\n" . 
-               substr($summaryText, 0, 500) . "...\n\n" .
+               $summaryText . "...\n\n" .
                "=========================================\n\n" .
                "=== USE THIS FOR PO ANALYSIS (RAW DATA FROM DATABASE - MANDATORY) ===\n" .
-               $poAnalysisText . "\n\n" .
+               "STUDENT DATA (MULTIPLE STUDENTS) - JSON FORMAT FOR FAST PROCESSING:\n" .
+               $jsonData . "\n\n" .
                "CRITICAL INSTRUCTIONS:\n" .
-               "1. Read the STUDENT ACTIVITIES/TASKS and STUDENT LEARNINGS sections above (from MULTIPLE STUDENTS)\n" .
-               "2. For each activity/learning, identify which POs it demonstrates\n" .
+               "1. Parse the JSON data above - it contains activities and learnings from MULTIPLE STUDENTS\n" .
+               "2. For each activity/learning in the JSON arrays, identify which POs it demonstrates\n" .
                "3. Build pos_hit array with objects: [{\"po\": \"PO5\", \"reason\": \"Students participated in orientation showing teamwork\"}, ...]\n" .
                "4. If you see words like 'participated', 'orientation', 'discussed', 'learned', 'house rules', 'projects' - these DEMONSTRATE MULTIPLE POs\n" .
-               "5. pos_hit MUST NOT be empty if activities/learnings exist\n" .
+               "5. pos_hit MUST NOT be empty if activities/learnings arrays are not empty\n" .
                "6. Build pos_not_hit with ALL POs (PO1-PO15) that are NOT in pos_hit\n" .
                "7. RECOMMENDATIONS - CRITICAL: After building pos_not_hit, you MUST:\n" .
                "   a) Count how many POs are in pos_not_hit (e.g., 9 POs)\n" .
@@ -337,7 +336,7 @@ Return ONLY the JSON object, no additional text before or after.";
                "   c) For EACH PO in pos_not_hit, write ONE recommendation\n" .
                "   d) Example: If pos_not_hit = [PO6, PO7, PO9], then recommendations = [rec for PO6, rec for PO7, rec for PO9]\n" .
                "   e) DO NOT return until recommendations count = pos_not_hit count!\n" .
-               "8. Return valid JSON with pos_hit populated based on the RAW DATA above\n" .
+               "8. Return valid JSON with pos_hit populated based on the JSON DATA above\n" .
                "Do NOT use the summary text for PO analysis.";
     }
 }

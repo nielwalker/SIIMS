@@ -307,6 +307,18 @@ class ChairSummaryAdapter
                     }
                     // Ensure summary is set (OpenAI-generated)
                     $result['summary'] = $summary;
+                    
+                    // CRITICAL: Ensure recommendations are always included in the result
+                    // The service should have already included them, but ensure they're present
+                    if (!isset($result['recommendations']) || !is_array($result['recommendations'])) {
+                        $result['recommendations'] = [];
+                    }
+                    
+                    \Log::info('ChairSummaryAdapter: Returning result with recommendations', [
+                        'has_recommendations' => !empty($result['recommendations']),
+                        'recommendations_count' => count($result['recommendations'] ?? [])
+                    ]);
+                    
                     return $result;
                 }
             } catch (\Throwable $e) {

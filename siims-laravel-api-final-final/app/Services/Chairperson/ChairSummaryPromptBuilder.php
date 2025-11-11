@@ -12,6 +12,7 @@ class ChairSummaryPromptBuilder
 {
     /**
      * Build summary prompt based on type
+     * OPTIMIZED: Convert activities and learnings to JSON for faster OpenAI processing
      *
      * @param array $activities
      * @param array $learnings
@@ -21,40 +22,52 @@ class ChairSummaryPromptBuilder
      */
     public function buildSummaryPrompt(array $activities, array $learnings, string $assessment, string $type): array
     {
-        $activitiesText = is_array($activities) ? implode(', ', $activities) : $activities;
-        $learningsText = is_array($learnings) ? implode(', ', $learnings) : $learnings;
+        // OPTIMIZATION: Convert to JSON format for faster processing
+        // Use compact JSON (no pretty print) to reduce token count
+        $dataJson = [
+            'activities' => is_array($activities) ? $activities : (!empty($activities) ? [$activities] : []),
+            'learnings' => is_array($learnings) ? $learnings : (!empty($learnings) ? [$learnings] : []),
+            'assessment' => $assessment,
+            'total_activities' => is_array($activities) ? count($activities) : (!empty($activities) ? 1 : 0),
+            'total_learnings' => is_array($learnings) ? count($learnings) : (!empty($learnings) ? 1 : 0)
+        ];
+        
+        $jsonData = json_encode($dataJson, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         
         // Chairperson overall (backward-compatible key overall_summary)
         if ($type === 'chair_overall' || $type === 'overall_summary') {
-            return $this->buildOverallPrompt($activitiesText, $learningsText, $assessment);
+            return $this->buildOverallPrompt($jsonData, $assessment);
         }
 
         // Chairperson weekly (group of students)
         if ($type === 'chair_week') {
-            return $this->buildChairWeeklyPrompt($activitiesText, $learningsText, $assessment);
+            return $this->buildChairWeeklyPrompt($jsonData, $assessment);
         }
 
         // Coordinator weekly (single student)
         if ($type === 'coordinator_week') {
-            return $this->buildCoordinatorWeeklyPrompt($activitiesText, $learningsText, $assessment);
+            return $this->buildCoordinatorWeeklyPrompt($jsonData, $assessment);
         }
 
         // Default generic weekly
-        return $this->buildDefaultWeeklyPrompt($activitiesText, $learningsText, $assessment);
+        return $this->buildDefaultWeeklyPrompt($jsonData, $assessment);
     }
 
     /**
      * Build overall summary prompt
+     * OPTIMIZED: Uses JSON format for faster processing
      */
-    private function buildOverallPrompt(string $activitiesText, string $learningsText, string $assessment): array
+    private function buildOverallPrompt(string $jsonData, string $assessment): array
     {
         $system = "You are an academic writing expert. Create a polished, professional summary for an internship program report.";
         
-        $user = "STUDENT ACTIVITIES: {$activitiesText}
-
-LEARNING OUTCOMES: {$learningsText}
+        $user = "STUDENT DATA (JSON FORMAT FOR FAST PROCESSING): {$jsonData}
 
 ASSESSMENT: {$assessment}
+
+INSTRUCTIONS:
+- Parse the JSON data above to extract activities and learnings arrays
+- Use the activities and learnings from the JSON to create the summary
 
 WRITING REQUIREMENTS:
 1. Begin EXACTLY with: 'For overall, the students '
@@ -93,16 +106,19 @@ Generate a single, polished paragraph that reads like professional academic writ
 
     /**
      * Build chairperson weekly prompt
+     * OPTIMIZED: Uses JSON format for faster processing
      */
-    private function buildChairWeeklyPrompt(string $activitiesText, string $learningsText, string $assessment): array
+    private function buildChairWeeklyPrompt(string $jsonData, string $assessment): array
     {
         $system = "You are an academic writing expert. Create a polished, professional weekly summary for an internship program report.";
         
-        $user = "STUDENT ACTIVITIES: {$activitiesText}
-
-LEARNING OUTCOMES: {$learningsText}
+        $user = "STUDENT DATA (JSON FORMAT FOR FAST PROCESSING): {$jsonData}
 
 ASSESSMENT: {$assessment}
+
+INSTRUCTIONS:
+- Parse the JSON data above to extract activities and learnings arrays
+- Use the activities and learnings from the JSON to create the summary
 
 WRITING REQUIREMENTS:
 1. Begin EXACTLY with: 'For this week, those students '
@@ -132,16 +148,19 @@ Generate a single, polished paragraph that reads like professional academic writ
 
     /**
      * Build coordinator weekly prompt
+     * OPTIMIZED: Uses JSON format for faster processing
      */
-    private function buildCoordinatorWeeklyPrompt(string $activitiesText, string $learningsText, string $assessment): array
+    private function buildCoordinatorWeeklyPrompt(string $jsonData, string $assessment): array
     {
         $system = "You are an academic writing expert. Create a polished, professional weekly summary for an internship program report.";
         
-        $user = "STUDENT ACTIVITIES: {$activitiesText}
-
-LEARNING OUTCOMES: {$learningsText}
+        $user = "STUDENT DATA (JSON FORMAT FOR FAST PROCESSING): {$jsonData}
 
 ASSESSMENT: {$assessment}
+
+INSTRUCTIONS:
+- Parse the JSON data above to extract activities and learnings arrays
+- Use the activities and learnings from the JSON to create the summary
 
 WRITING REQUIREMENTS:
 1. Begin EXACTLY with: 'For this week, the student '
@@ -172,9 +191,9 @@ Generate a single, polished paragraph that reads like professional academic writ
     /**
      * Build default weekly prompt
      */
-    private function buildDefaultWeeklyPrompt(string $activitiesText, string $learningsText, string $assessment): array
+    private function buildDefaultWeeklyPrompt(string $jsonData, string $assessment): array
     {
-        return $this->buildChairWeeklyPrompt($activitiesText, $learningsText, $assessment);
+        return $this->buildChairWeeklyPrompt($jsonData, $assessment);
     }
 }
 

@@ -66,10 +66,23 @@ class ChairpersonSummaryService
             if ($response['success'] && $response['content']) {
                 $rawContent = $response['content'];
                 
+                // Log raw OpenAI response for debugging (first 500 chars)
+                Log::info('ChairpersonSummaryService: Raw OpenAI response preview', [
+                    'response_preview' => substr($rawContent, 0, 500),
+                    'response_length' => strlen($rawContent)
+                ]);
+                
                 // Extract PO analysis from response
                 $pos = $this->extractPosArrays($rawContent);
                 $poTypes = $this->extractPoHitTypes($rawContent);
                 $recommendations = $this->extractRecommendations($rawContent);
+                
+                // Log extracted recommendations for debugging
+                Log::info('ChairpersonSummaryService: Extracted recommendations', [
+                    'recommendations_count' => count($recommendations),
+                    'recommendations_preview' => array_slice($recommendations, 0, 3),
+                    'raw_recommendations' => $recommendations
+                ]);
                 
                 // Ensure all 15 POs are accounted for
                 $allPOs = array_map(function($i) {
@@ -196,9 +209,40 @@ class ChairpersonSummaryService
         $jsonMatch = [];
         if (preg_match('/\{[\s\S]*\}/', $content, $jsonMatch)) {
             $json = json_decode($jsonMatch[0], true);
-            if (is_array($json) && isset($json['recommendations'])) {
-                return is_array($json['recommendations']) ? $json['recommendations'] : [];
+            if (is_array($json)) {
+                // Check for recommendations in various possible formats
+                if (isset($json['recommendations'])) {
+                    $recs = $json['recommendations'];
+                    if (is_array($recs)) {
+                        // Filter out empty strings and ensure all are strings
+                        $recs = array_filter($recs, function($r) {
+                            return !empty($r) && is_string($r);
+                        });
+                        return array_values($recs); // Re-index array
+                    }
+                }
+                
+                // Log if recommendations key exists but is not an array
+                if (isset($json['recommendations'])) {
+                    Log::warning('ChairpersonSummaryService: Recommendations found but not in expected format', [
+                        'type' => gettype($json['recommendations']),
+                        'value' => $json['recommendations']
+                    ]);
+                } else {
+                    Log::warning('ChairpersonSummaryService: No recommendations key found in OpenAI response', [
+                        'available_keys' => array_keys($json)
+                    ]);
+                }
+            } else {
+                Log::warning('ChairpersonSummaryService: Failed to decode JSON from OpenAI response', [
+                    'json_error' => json_last_error_msg(),
+                    'content_preview' => substr($content, 0, 200)
+                ]);
             }
+        } else {
+            Log::warning('ChairpersonSummaryService: No JSON found in OpenAI response', [
+                'content_preview' => substr($content, 0, 200)
+            ]);
         }
         return [];
     }
