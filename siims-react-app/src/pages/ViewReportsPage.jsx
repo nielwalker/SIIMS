@@ -215,11 +215,6 @@ const ViewReportsPage = ({ authorizeRole }) => {
         
         setAvailableWeeks(weeksWithData);
         
-        // If current selected week is not in available weeks, reset to first available week
-        if (weeksWithData.length > 0 && !weeksWithData.includes(selectedWeek)) {
-          setSelectedWeek(weeksWithData[0]);
-        }
-        
         // Helper formatters
         const truncate = (s, n = 300) => (s && s.length > n ? s.slice(0, n) + "…" : s);
         const fmtDate = (s) => {
@@ -256,6 +251,35 @@ const ViewReportsPage = ({ authorizeRole }) => {
       cancel = true;
     };
   }, [selectedStudentId, selectedWeek]);
+
+  // Separate effect to update selectedWeek when available weeks change
+  // This prevents infinite loops by not updating state during the fetch effect
+  useEffect(() => {
+    if (availableWeeks.length > 0 && !availableWeeks.includes(selectedWeek)) {
+      setSelectedWeek(availableWeeks[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableWeeks]); // Only depend on availableWeeks, not selectedWeek
+
+  // Memoize setRows callback to prevent infinite loops when passed to DynamicDataGrid
+  const handleSetRows = useCallback((newRows) => {
+    setRows(prevRows => {
+      // Only update if rows actually changed (shallow comparison)
+      if (prevRows.length !== newRows.length) {
+        return newRows;
+      }
+      // Deep comparison only if lengths match
+      const changed = prevRows.some((row, idx) => {
+        const newRow = newRows[idx];
+        if (!newRow) return true;
+        return row.id !== newRow.id || 
+               row.week_number !== newRow.week_number ||
+               row.tasks !== newRow.tasks ||
+               row.learnings !== newRow.learnings;
+      });
+      return changed ? newRows : prevRows;
+    });
+  }, []);
 
   // Calculate PO scores for graph display
   const calculatePOScores = useCallback((poData, weeklyEntries) => {
@@ -761,7 +785,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
         {selectedStudentId ? (
           <DynamicDataGrid
             rows={rows}
-            setRows={setRows}
+            setRows={handleSetRows}
             columns={columns}
             checkboxSelection={false}
             requestedBy={authorizeRole}
