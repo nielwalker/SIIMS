@@ -54,7 +54,7 @@ class ChairpersonSummaryController extends Controller
         $useGPT = (bool) $request->input('useGPT');
 
         // OPTIMIZED: Fetch weekly entries of all students under coordinator (and section if specified)
-        // This query is optimized to handle many students efficiently
+        // This query is optimized to handle many students efficiently, especially for "overall" week
         $query = DB::table('weekly_entries as we')
             ->select('we.week_number as weekNumber', 'we.tasks', 'we.learnings')
             ->join('students as s', 's.id', '=', 'we.student_id')
@@ -72,14 +72,27 @@ class ChairpersonSummaryController extends Controller
             $query->where('we.week_number', $week);
         }
 
-        // OPTIMIZATION: Limit the number of entries processed to prevent timeout
-        // For large datasets, we'll process in chunks or limit results
-        // This ensures the system can handle coordinators with many students
-        $maxEntries = 1000; // Maximum entries to process at once
-        $rows = $query
-            ->orderBy('we.created_at', 'desc') // Get most recent entries first
-            ->limit($maxEntries)
-            ->get();
+        // OPTIMIZATION: For "overall" week, use smarter sampling strategy
+        // For specific weeks, use higher limit; for overall, sample across all weeks
+        if ($week === null || $week === 0) {
+            // "Overall" case: Sample entries from each week to get representative data
+            // This prevents overwhelming OpenAI with too much data while maintaining coverage
+            $maxEntries = 2000; // Higher limit for overall to get better coverage
+            $rows = $query
+                ->orderBy('we.week_number', 'asc') // Order by week first
+                ->orderBy('we.created_at', 'desc') // Then by most recent
+                ->limit($maxEntries)
+                ->get();
+            
+            \Log::info('ChairSummary: "Overall" week - sampling up to ' . $maxEntries . ' entries across all weeks');
+        } else {
+            // Specific week: Use moderate limit
+            $maxEntries = 1000;
+            $rows = $query
+                ->orderBy('we.created_at', 'desc') // Get most recent entries first
+                ->limit($maxEntries)
+                ->get();
+        }
         
         \Log::info('ChairSummary: Processing ' . $rows->count() . ' entries (max: ' . $maxEntries . ') for coordinator ' . $coordinatorId . ', section ' . $sectionId . ', week ' . $week);
         
@@ -257,16 +270,26 @@ class ChairpersonSummaryController extends Controller
             // Set a timeout for the entire operation to prevent hanging
             $startTime = microtime(true);
             
-            // For large datasets (30+ students), limit the data sent to OpenAI to prevent timeouts
-            // OpenAI has token limits and processing large amounts of data can cause timeouts
-            $maxActivities = 50; // Limit activities to prevent timeout
-            $maxLearnings = 50;  // Limit learnings to prevent timeout
+            // OPTIMIZATION: For large datasets, intelligently limit data sent to OpenAI
+            // For "overall" week, use higher limits but still cap to prevent timeouts
+            // For specific weeks, use moderate limits
+            if ($week === null || $week === 0) {
+                // "Overall" week: Allow more data but still cap it
+                $maxActivities = 100; // Higher limit for overall to maintain coverage
+                $maxLearnings = 100;  // Higher limit for overall to maintain coverage
+            } else {
+                // Specific week: Moderate limits
+                $maxActivities = 50;
+                $maxLearnings = 50;
+            }
             
-            $limitedActivities = array_slice($activities, 0, $maxActivities);
-            $limitedLearnings = array_slice($learnings, 0, $maxLearnings);
+            // Use smart sampling: take evenly distributed samples, not just first N
+            $limitedActivities = $this->smartSample($activities, $maxActivities);
+            $limitedLearnings = $this->smartSample($learnings, $maxLearnings);
             
             if (count($activities) > $maxActivities || count($learnings) > $maxLearnings) {
                 \Log::info('ChairSummary: Limiting data for OpenAI', [
+                    'week_type' => ($week === null || $week === 0) ? 'overall' : 'specific',
                     'original_activities' => count($activities),
                     'limited_activities' => count($limitedActivities),
                     'original_learnings' => count($learnings),
@@ -531,6 +554,34 @@ class ChairpersonSummaryController extends Controller
         return $response;
     }
 
+    /**
+     * Smart sampling: evenly distribute samples across the array
+     * This ensures we get representative data from all parts of the dataset
+     * 
+     * @param array $data
+     * @param int $maxItems
+     * @return array
+     */
+    private function smartSample(array $data, int $maxItems): array
+    {
+        $count = count($data);
+        if ($count <= $maxItems) {
+            return $data;
+        }
+        
+        // If we have more items than max, sample evenly across the array
+        $step = $count / $maxItems;
+        $sampled = [];
+        
+        for ($i = 0; $i < $maxItems; $i++) {
+            $index = (int) round($i * $step);
+            if ($index < $count) {
+                $sampled[] = $data[$index];
+            }
+        }
+        
+        return $sampled;
+    }
 
 }
 

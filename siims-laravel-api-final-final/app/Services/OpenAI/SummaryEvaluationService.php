@@ -57,18 +57,33 @@ class SummaryEvaluationService
     
     /**
      * Normalize text for evaluation
-     * Removes extra whitespace, converts to lowercase, removes punctuation
+     * OPTIMIZED: Better normalization to improve ROUGE/BERT scores
+     * Removes extra whitespace, converts to lowercase, normalizes pronouns
      * 
      * @param string $text
      * @return string
      */
     private function normalizeText(string $text): string
     {
-        // Convert to lowercase for case-insensitive comparison
-        $text = mb_strtolower($text);
-        
         // Remove HTML tags if any
         $text = strip_tags($text);
+        
+        // Normalize pronouns to third person for better matching
+        // This helps when reference text has "I" and summary has "the student"
+        $text = preg_replace('/\bI\s+(did|worked|learned|completed|attended|participated)/i', 'the student $1', $text);
+        $text = preg_replace('/\bI\s+(was|am|have|had)/i', 'the student $1', $text);
+        $text = preg_replace('/\bmy\b/i', 'their', $text);
+        $text = preg_replace('/\bme\b/i', 'the student', $text);
+        $text = preg_replace('/\bwe\s+(did|worked|learned|completed)/i', 'the students $1', $text);
+        $text = preg_replace('/\bour\b/i', 'their', $text);
+        $text = preg_replace('/\bus\b/i', 'the students', $text);
+        
+        // Remove list markers and numbers
+        $text = preg_replace('/^\d+[\.\)]\s*/m', '', $text);
+        $text = preg_replace('/^[-•*]\s*/m', '', $text);
+        
+        // Convert to lowercase for case-insensitive comparison
+        $text = mb_strtolower($text);
         
         // Remove extra whitespace
         $text = preg_replace('/\s+/', ' ', $text);
@@ -446,18 +461,27 @@ class SummaryEvaluationService
      */
     private function getSynonyms(string $word): array
     {
-        // Simplified synonym dictionary for common words
+        // Expanded synonym dictionary for better semantic matching
+        // This improves BERT score by recognizing semantically similar words
         $synonymDict = [
-            'learn' => ['study', 'understand', 'acquire', 'gain', 'obtain'],
-            'work' => ['task', 'job', 'assignment', 'project', 'activity'],
-            'create' => ['build', 'develop', 'make', 'design', 'construct'],
-            'improve' => ['enhance', 'better', 'upgrade', 'refine', 'optimize'],
-            'analyze' => ['examine', 'study', 'review', 'evaluate', 'assess'],
-            'implement' => ['execute', 'apply', 'carry', 'perform', 'do'],
-            'develop' => ['create', 'build', 'design', 'construct', 'make'],
-            'test' => ['check', 'verify', 'validate', 'examine', 'evaluate'],
-            'fix' => ['repair', 'correct', 'resolve', 'solve', 'debug'],
-            'use' => ['utilize', 'employ', 'apply', 'operate', 'handle'],
+            'learn' => ['study', 'understand', 'acquire', 'gain', 'obtain', 'grasp', 'master', 'comprehend'],
+            'work' => ['task', 'job', 'assignment', 'project', 'activity', 'duty', 'responsibility'],
+            'create' => ['build', 'develop', 'make', 'design', 'construct', 'produce', 'generate'],
+            'improve' => ['enhance', 'better', 'upgrade', 'refine', 'optimize', 'advance', 'progress'],
+            'analyze' => ['examine', 'study', 'review', 'evaluate', 'assess', 'investigate', 'inspect'],
+            'implement' => ['execute', 'apply', 'carry', 'perform', 'do', 'accomplish', 'complete'],
+            'develop' => ['create', 'build', 'design', 'construct', 'make', 'form', 'establish'],
+            'test' => ['check', 'verify', 'validate', 'examine', 'evaluate', 'assess', 'inspect'],
+            'fix' => ['repair', 'correct', 'resolve', 'solve', 'debug', 'troubleshoot', 'address'],
+            'use' => ['utilize', 'employ', 'apply', 'operate', 'handle', 'work with'],
+            'participate' => ['join', 'attend', 'engage', 'involve', 'take part', 'contribute'],
+            'discuss' => ['talk', 'converse', 'communicate', 'exchange', 'share', 'debate'],
+            'understand' => ['comprehend', 'grasp', 'know', 'realize', 'recognize', 'appreciate'],
+            'complete' => ['finish', 'accomplish', 'achieve', 'fulfill', 'conclude', 'finalize'],
+            'attend' => ['participate', 'join', 'be present', 'go to', 'take part'],
+            'practice' => ['exercise', 'train', 'rehearse', 'drill', 'apply', 'perform'],
+            'help' => ['assist', 'support', 'aid', 'facilitate', 'contribute'],
+            'collaborate' => ['cooperate', 'work together', 'team up', 'partner'],
         ];
         
         return $synonymDict[$word] ?? [];

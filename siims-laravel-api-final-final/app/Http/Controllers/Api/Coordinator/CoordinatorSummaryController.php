@@ -42,6 +42,9 @@ class CoordinatorSummaryController extends Controller
 
     public function generate(Request $request, CoordinatorSummaryAdapter $adapter): JsonResponse
     {
+        // Increase execution time limit for large datasets, especially for "overall" week
+        set_time_limit(120); // 2 minutes for processing large datasets
+        
         $section = $request->input('section');
         $studentId = $request->input('studentId');
         $coordinatorId = $request->input('coordinatorId');
@@ -73,10 +76,28 @@ class CoordinatorSummaryController extends Controller
             });
         }
 
-        $rows = $query->when(!$isOverall && $week, function ($q) use ($week) {
-                $q->where('we.week_number', $week);
-            })
-            ->get();
+        // OPTIMIZATION: For "overall" week, use smarter query strategy
+        if ($isOverall || $week === null || $week === 0) {
+            // "Overall" case: Get all entries but limit to prevent timeout
+            $maxEntries = 2000; // Higher limit for overall to get better coverage
+            $rows = $query
+                ->whereNotNull('we.tasks')
+                ->whereNotNull('we.learnings')
+                ->orderBy('we.week_number', 'asc') // Order by week first
+                ->orderBy('we.created_at', 'desc') // Then by most recent
+                ->limit($maxEntries)
+                ->get();
+        } else {
+            // Specific week: Use moderate limit
+            $maxEntries = 1000;
+            $rows = $query
+                ->where('we.week_number', $week)
+                ->whereNotNull('we.tasks')
+                ->whereNotNull('we.learnings')
+                ->orderBy('we.created_at', 'desc')
+                ->limit($maxEntries)
+                ->get();
+        }
 
         // Extract activities/tasks and learnings separately for PO analysis
         $extracted = $this->extractActivitiesAndLearnings($rows);
@@ -96,6 +117,34 @@ class CoordinatorSummaryController extends Controller
         $summary = $summaryResult['summary'];
         $keywordScores = $summaryResult['keywordScores'] ?? [];
 
+        // OPTIMIZATION: For large datasets, intelligently limit data sent to OpenAI
+        // Reduced limits for faster OpenAI processing
+        // For "overall" week, use moderate limits to speed up processing
+        // For specific weeks, use lower limits for even faster responses
+        if ($isOverall || $week === null || $week === 0) {
+            // "Overall" week: Reduced limits for faster processing
+            $maxActivities = 60; // Reduced from 100 for faster processing
+            $maxLearnings = 60;  // Reduced from 100 for faster processing
+        } else {
+            // Specific week: Lower limits for fastest processing
+            $maxActivities = 30; // Reduced from 50 for faster processing
+            $maxLearnings = 30; // Reduced from 50 for faster processing
+        }
+        
+        // Use smart sampling: take evenly distributed samples, not just first N
+        $limitedActivities = $this->smartSample($activities, $maxActivities);
+        $limitedLearnings = $this->smartSample($learnings, $maxLearnings);
+        
+        if (count($activities) > $maxActivities || count($learnings) > $maxLearnings) {
+            Log::info('CoordinatorSummary: Limiting data for OpenAI', [
+                'week_type' => ($isOverall || $week === null || $week === 0) ? 'overall' : 'specific',
+                'original_activities' => count($activities),
+                'limited_activities' => count($limitedActivities),
+                'original_learnings' => count($learnings),
+                'limited_learnings' => count($limitedLearnings),
+            ]);
+        }
+        
         // Generate PO analysis using CoordinatorSummaryService
         $poAnalysisResult = [];
         if ($useGPT && !empty($combined) && $studentId) {
@@ -108,8 +157,8 @@ class CoordinatorSummaryController extends Controller
                         $poAnalysisResult = $this->coordinatorSummaryService->generateSummaryWithPOAnalysis(
                             $combined, 
                             $week, 
-                            $activities, 
-                            $learnings
+                            $limitedActivities, // Use limited data for OpenAI
+                            $limitedLearnings   // Use limited data for OpenAI
                         );
                     }
                 } else {
@@ -117,8 +166,8 @@ class CoordinatorSummaryController extends Controller
                     $poAnalysisResult = $this->coordinatorSummaryService->generateSummaryWithPOAnalysis(
                         $combined, 
                         $week, 
-                        $activities, 
-                        $learnings
+                        $limitedActivities, // Use limited data for OpenAI
+                        $limitedLearnings   // Use limited data for OpenAI
                     );
                 }
             }
@@ -216,6 +265,8 @@ class CoordinatorSummaryController extends Controller
 
         // Merge summary and PO analysis results
         // Include both corrected and original activities/learnings for frontend optimization
+        // Always return FULL activities/learnings to frontend (not the limited ones sent to OpenAI)
+        // This ensures the frontend gets all the data even though OpenAI only processed a subset
         $correctedActivities = $poAnalysisResult['corrected_activities'] ?? $activities;
         $correctedLearnings = $poAnalysisResult['corrected_learnings'] ?? $learnings;
         
@@ -231,8 +282,9 @@ class CoordinatorSummaryController extends Controller
             'po_context_hit' => $poAnalysisResult['po_context_hit'] ?? [],
             'recommendations' => $recommendations, // Use enhanced recommendations
             // Include activities and learnings for frontend optimization (avoids re-fetching)
-            'activities' => $correctedActivities, // Use corrected if available, otherwise original
-            'learnings' => $correctedLearnings,   // Use corrected if available, otherwise original
+            // Always use FULL data, not the limited data sent to OpenAI
+            'activities' => $correctedActivities, // Use corrected if available, otherwise original (FULL data)
+            'learnings' => $correctedLearnings,   // Use corrected if available, otherwise original (FULL data)
             'corrected_activities' => $correctedActivities, // Backward compatibility
             'corrected_learnings' => $correctedLearnings,   // Backward compatibility
         ], 200, [
@@ -242,6 +294,33 @@ class CoordinatorSummaryController extends Controller
         ]);
     }
 
-    
+    /**
+     * Smart sampling: evenly distribute samples across the array
+     * This ensures we get representative data from all parts of the dataset
+     * 
+     * @param array $data
+     * @param int $maxItems
+     * @return array
+     */
+    private function smartSample(array $data, int $maxItems): array
+    {
+        $count = count($data);
+        if ($count <= $maxItems) {
+            return $data;
+        }
+        
+        // If we have more items than max, sample evenly across the array
+        $step = $count / $maxItems;
+        $sampled = [];
+        
+        for ($i = 0; $i < $maxItems; $i++) {
+            $index = (int) round($i * $step);
+            if ($index < $count) {
+                $sampled[] = $data[$index];
+            }
+        }
+        
+        return $sampled;
+    }
 }
 

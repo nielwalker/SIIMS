@@ -13,7 +13,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [selectedStudentCompany, setSelectedStudentCompany] = useState("");
   const [availableWeeks, setAvailableWeeks] = useState([]);
-  const [selectedWeek, setSelectedWeek] = useState(1);
+  const [selectedWeek, setSelectedWeek] = useState("overall"); // Start with "overall" for comprehensive view
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [studentSummary, setStudentSummary] = useState("");
   // Coordinator view: recommendations hidden (chairperson only)
@@ -248,7 +248,10 @@ const ViewReportsPage = ({ authorizeRole }) => {
               setAllEntries(normalizedAll);
               
               // Filter entries by selected week for the grid
-              const filtered = normalizedAll.filter((e) => e.week_number === Number(selectedWeek));
+              // Handle "overall" case - show all entries from all weeks
+              const filtered = selectedWeek === "overall" 
+                ? normalizedAll 
+                : normalizedAll.filter((e) => e.week_number === Number(selectedWeek));
               if (!cancel) {
                 setRows(filtered);
               }
@@ -306,7 +309,10 @@ const ViewReportsPage = ({ authorizeRole }) => {
         setAllEntries(normalizedAll);
         
         // Filter entries by selected week for the grid
-        const filtered = normalizedAll.filter((e) => e.week_number === Number(selectedWeek));
+        // Handle "overall" case - show all entries from all weeks
+        const filtered = selectedWeek === "overall" 
+          ? normalizedAll 
+          : normalizedAll.filter((e) => e.week_number === Number(selectedWeek));
         setRows(filtered);
       } catch (e) {
         setAvailableWeeks([]);
@@ -321,9 +327,15 @@ const ViewReportsPage = ({ authorizeRole }) => {
   }, [selectedStudentId, selectedWeek]);
 
   // Separate effect to update selectedWeek when available weeks change
+  // Only auto-select a week if "overall" is not selected and no week matches
   // This prevents infinite loops by not updating state during the fetch effect
   useEffect(() => {
-    if (availableWeeks.length > 0 && !availableWeeks.includes(selectedWeek)) {
+    if (selectedWeek === "overall") {
+      // Keep "overall" selected if it's already selected
+      return;
+    }
+    if (availableWeeks.length > 0 && !availableWeeks.includes(Number(selectedWeek))) {
+      // Auto-select first available week only if current selection is invalid
       setSelectedWeek(availableWeeks[0]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -429,6 +441,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
   }, []);
 
   // Fetch summary + PO analysis + total hours for coordinator
+  // OPTIMIZATION: Load in background - don't block UI, weekly reports are already displayed
   useEffect(() => {
     const fetchSummaryAndPOAnalysis = async () => {
       if (!selectedStudentId) {
@@ -438,16 +451,24 @@ const ViewReportsPage = ({ authorizeRole }) => {
         setPoError("");
         return;
       }
+      
+      // Set initial loading states but don't block UI
+      setSummaryLoading(true);
+      setPoAnalysisLoading(true);
+      setPoError("");
+      
+      // For "overall", send null/0 for week and set isOverall to true
+      const isOverall = selectedWeek === "overall";
+      const weekValue = isOverall ? null : Number(selectedWeek);
+      
       try {
-        setSummaryLoading(true);
-        setPoAnalysisLoading(true);
-        setPoError("");
+        // Load summary/PO analysis in background - weekly reports are already displayed
         const resp = await axiosClient.post("/api/v1/summary", {
           studentId: selectedStudentId,
-          week: selectedWeek,
+          week: weekValue,
           useGPT: true, // Use OpenAI for summarization and PO analysis
           analysisType: "coordinator",
-          isOverall: false,
+          isOverall: isOverall, // Set to true when "overall" is selected
         }, {
           timeout: 90000, // 90 seconds timeout for OpenAI (can be slow)
         });
@@ -506,7 +527,10 @@ const ViewReportsPage = ({ authorizeRole }) => {
             calculatePOScores(data, mockEntries);
           } else {
             // Fallback: Use allEntries if backend data not available
-            const weekEntries = allEntries.filter(e => e.week_number === Number(selectedWeek));
+            // Handle "overall" case - use all entries from all weeks
+            const weekEntries = selectedWeek === "overall" 
+              ? allEntries 
+              : allEntries.filter(e => e.week_number === Number(selectedWeek));
             calculatePOScores(data, weekEntries);
           }
         }
@@ -635,8 +659,12 @@ const ViewReportsPage = ({ authorizeRole }) => {
           <select
             className="px-3 py-2 border rounded text-gray-900 bg-white"
             value={selectedWeek}
-            onChange={(e) => setSelectedWeek(Number(e.target.value))}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSelectedWeek(value === "overall" ? "overall" : Number(value));
+            }}
           >
+            <option value="overall">Overall</option>
             {availableWeeks.length > 0 ? (
               availableWeeks.map((w) => (
                 <option key={w} value={w}>Week {w}</option>
@@ -909,13 +937,18 @@ const ViewReportsPage = ({ authorizeRole }) => {
             <h4 className="text-md font-semibold text-gray-800 mb-3">Weekly Submission Progress</h4>
             {(() => {
               // Build a 5-row view for the currently selected week only
-              const weekNum = Number(selectedWeek) || 1;
-              const entriesForWeek = allEntries.filter((e) => Number(e.week_number) === weekNum);
-              const sorted = entriesForWeek.sort((a, b) => String(a.created_at || a.start_date).localeCompare(String(b.created_at || b.start_date)));
+              // Handle "overall" case - show all entries from all weeks
+              const isOverall = selectedWeek === "overall";
+              const weekNum = isOverall ? null : (Number(selectedWeek) || 1);
+              const entriesForWeek = isOverall 
+                ? allEntries 
+                : allEntries.filter((e) => Number(e.week_number) === weekNum);
+              // Create a copy before sorting to avoid mutating read-only arrays
+              const sorted = [...entriesForWeek].sort((a, b) => String(a.created_at || a.start_date).localeCompare(String(b.created_at || b.start_date)));
               const getDate = (idx) => (sorted[idx]?.created_at || sorted[idx]?.start_date || '');
 
               const rowsView = Array.from({ length: 5 }, (_, i) => ({
-                label: `Week ${weekNum} — Day ${i + 1}`,
+                label: isOverall ? `Overall — Day ${i + 1}` : `Week ${weekNum} — Day ${i + 1}`,
                 date: sorted[i] ? getDate(i) : '',
                 status: sorted[i] ? 'Submitted' : 'Missing',
               }));
@@ -946,9 +979,11 @@ const ViewReportsPage = ({ authorizeRole }) => {
                               onClick={async () => {
                                 try {
                                   await axiosClient.get('/sanctum/csrf-cookie', { withCredentials: true });
+                                  // For "overall", we can't request a specific week, so use the first available week
+                                  const weekToRequest = isOverall ? (availableWeeks[0] || 1) : weekNum;
                                   await axiosClient.post('/api/v1/weekly-entry-requests', {
                                     student_id: selectedStudentId,
-                                    week_number: weekNum,
+                                    week_number: weekToRequest,
                                   });
                                   alert('Request sent to the student successfully.');
                                 } catch (e) {

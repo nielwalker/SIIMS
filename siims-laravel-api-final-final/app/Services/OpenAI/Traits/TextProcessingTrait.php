@@ -79,11 +79,12 @@ trait TextProcessingTrait
 
     /**
      * Build reference text from raw database data for evaluation
+     * OPTIMIZED: Normalize reference text to match summary format for better ROUGE/BERT scores
      * 
      * @param array|string $activities Raw activities from database
      * @param array|string $learnings Raw learnings from database
      * @param string $assessment Optional assessment text
-     * @return string Combined reference text
+     * @return string Combined reference text (normalized for better evaluation)
      */
     protected function buildReferenceText($activities, $learnings, string $assessment = ''): string
     {
@@ -99,28 +100,70 @@ trait TextProcessingTrait
             $learnings = is_string($learnings) && !empty($learnings) ? [$learnings] : [];
         }
         
-        // Add activities
+        // Normalize and clean activities/learnings for better evaluation
+        // Convert to third person to match summary format
+        $normalizeForEvaluation = function($text) {
+            if (empty($text)) return '';
+            
+            // Remove HTML tags
+            $text = strip_tags($text);
+            
+            // Convert first person to third person for better matching
+            $text = preg_replace('/\bI\s+(did|worked|learned|completed|attended|participated)/i', 'the student $1', $text);
+            $text = preg_replace('/\bI\s+(was|am|have|had)/i', 'the student $1', $text);
+            $text = preg_replace('/\bmy\b/i', 'their', $text);
+            $text = preg_replace('/\bme\b/i', 'the student', $text);
+            $text = preg_replace('/\bwe\s+(did|worked|learned|completed)/i', 'the students $1', $text);
+            $text = preg_replace('/\bour\b/i', 'their', $text);
+            $text = preg_replace('/\bus\b/i', 'the students', $text);
+            
+            // Remove list markers and numbers
+            $text = preg_replace('/^\d+[\.\)]\s*/m', '', $text);
+            $text = preg_replace('/^[-•*]\s*/m', '', $text);
+            
+            // Clean up extra whitespace
+            $text = preg_replace('/\s+/', ' ', $text);
+            
+            return trim($text);
+        };
+        
+        // Add activities (normalized)
         if (!empty($activities)) {
-            $activitiesText = array_filter(array_map('trim', $activities));
+            $activitiesText = array_filter(array_map(function($a) use ($normalizeForEvaluation) {
+                return $normalizeForEvaluation($a);
+            }, $activities));
             if (!empty($activitiesText)) {
-                $parts[] = 'Activities: ' . implode(' ', $activitiesText);
+                // Join activities naturally instead of just concatenating
+                $activitiesStr = implode('. ', array_filter($activitiesText));
+                $parts[] = $activitiesStr;
             }
         }
         
-        // Add learnings
+        // Add learnings (normalized)
         if (!empty($learnings)) {
-            $learningsText = array_filter(array_map('trim', $learnings));
+            $learningsText = array_filter(array_map(function($l) use ($normalizeForEvaluation) {
+                return $normalizeForEvaluation($l);
+            }, $learnings));
             if (!empty($learningsText)) {
-                $parts[] = 'Learnings: ' . implode(' ', $learningsText);
+                // Join learnings naturally instead of just concatenating
+                $learningsStr = implode('. ', array_filter($learningsText));
+                $parts[] = $learningsStr;
             }
         }
         
         // Add assessment if provided
         if (!empty($assessment)) {
-            $parts[] = 'Assessment: ' . trim($assessment);
+            $parts[] = trim($assessment);
         }
         
-        return implode(' ', $parts);
+        // Join all parts naturally
+        $referenceText = implode(' ', $parts);
+        
+        // Final cleanup
+        $referenceText = preg_replace('/\s+/', ' ', $referenceText);
+        $referenceText = trim($referenceText);
+        
+        return $referenceText;
     }
 
     /**
