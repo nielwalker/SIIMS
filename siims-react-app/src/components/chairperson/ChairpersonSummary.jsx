@@ -844,8 +844,12 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
   }, [coordinatorId, sectionId, week, refreshTrigger]);
 
   // Notify parent with the latest exportable data snapshot
+  // Only call when loading completes (loading changes from true to false) to prevent infinite loops
   useEffect(() => {
     if (typeof onExportReady !== 'function') return;
+    // Only update export snapshot when loading is complete (not loading and we have data)
+    if (loading) return; // Wait for loading to complete
+    
     const stripHtml = (t) => String(t || "")
       .replace(/<[^>]*>/g, ' ')
       .replace(/&nbsp;/gi, ' ')
@@ -873,7 +877,9 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
       poDescriptions: PO_DESCRIPTIONS.slice(),
       exportedAt: new Date().toISOString(),
     });
-  }, [onExportReady, coordinatorId, sectionId, week, summary, scores, hitList, notHitList, PO_DESCRIPTIONS]);
+    // Only depend on loading state and filter props - not on data state variables to prevent loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, coordinatorId, sectionId, week, refreshTrigger]);
 
   // Initialize Bootstrap tooltips
   useEffect(() => {

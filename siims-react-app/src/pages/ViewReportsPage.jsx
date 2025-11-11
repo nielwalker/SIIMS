@@ -394,9 +394,12 @@ const ViewReportsPage = ({ authorizeRole }) => {
         }
         
         // Calculate PO scores for graph (use allEntries filtered by week)
+        // Use a ref to prevent infinite loops - only calculate when PO data actually changes
         const weekEntries = allEntries.filter(e => e.week_number === Number(selectedWeek));
-        calculatePOScores(data, weekEntries);
-        
+        if (data?.pos_hit || data?.pos_not_hit) {
+          calculatePOScores(data, weekEntries);
+        }
+
         if (data?.openai_unavailable) {
           setPoError("PO Analysis is currently unavailable. Please try again later.");
         }
@@ -442,7 +445,10 @@ const ViewReportsPage = ({ authorizeRole }) => {
 
     fetchSummaryAndPOAnalysis();
     fetchTotalHours();
-  }, [selectedStudentId, selectedWeek, allEntries, calculatePOScores]);
+    // Remove allEntries and calculatePOScores from dependencies to prevent infinite loops
+    // allEntries is used inside but doesn't need to trigger re-fetch
+    // calculatePOScores is stable (useCallback with empty deps)
+  }, [selectedStudentId, selectedWeek]);
 
   return (
     <Page>
@@ -753,20 +759,14 @@ const ViewReportsPage = ({ authorizeRole }) => {
         )}
 
         {selectedStudentId ? (
-          (() => {
-            const gridProps = {
-              rows: rows,
-              setRows: setRows,
-              columns: columns,
-              checkboxSelection: false,
-              requestedBy: authorizeRole,
-            };
-            if (gridUrl) {
-              // Only provide url when defined to avoid `/api/v1undefined` requests
-              gridProps.url = gridUrl;
-            }
-            return <DynamicDataGrid {...gridProps} />;
-          })()
+          <DynamicDataGrid
+            rows={rows}
+            setRows={setRows}
+            columns={columns}
+            checkboxSelection={false}
+            requestedBy={authorizeRole}
+            url={gridUrl}
+          />
         ) : (
           <div className="text-gray-500 border rounded p-4 bg-white">Select a student to load weekly reports.</div>
         )}
