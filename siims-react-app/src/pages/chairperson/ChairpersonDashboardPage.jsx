@@ -197,7 +197,7 @@ export default function ChairpersonDashboardPage() {
     };
   }, []);
 
-  // Dynamically compute weeks that have data for the selected coordinator
+  // Dynamically compute weeks that have data for the selected coordinator (OPTIMIZED)
   useEffect(() => {
     let cancelled = false;
     async function loadWeeks() {
@@ -218,7 +218,41 @@ export default function ChairpersonDashboardPage() {
           Authorization: `Bearer ${JSON.parse(localStorage.getItem("ACCESS_TOKEN"))}`,
         };
 
-        // Load sections for selected coordinator (for dropdown when multiple)
+        // OPTIMIZED: Use single endpoint to get weeks and sections in one call
+        try {
+          const qp = new URLSearchParams({ coordinatorId: selectedCoordinatorId });
+          if (selectedSectionId) {
+            qp.set('sectionId', selectedSectionId);
+          }
+          const resp = await fetch(`${apiBase}/api/v1/chairperson/available-weeks?${qp.toString()}`, {
+            headers,
+            credentials: "include",
+          });
+          
+          if (resp.ok) {
+            const data = await resp.json();
+            const weeks = Array.isArray(data?.weeks) ? data.weeks : [];
+            const sections = Array.isArray(data?.sections) ? data.sections : [];
+            
+            if (!cancelled) {
+              setAvailableWeeks(weeks);
+              setCoordinatorSections(sections);
+              if (weeks.length > 0 && !weeks.includes(Number(selectedWeek))) {
+                setSelectedWeek(weeks[0]);
+              }
+              // Auto-select section if only one
+              if (sections.length === 1 && !selectedSectionId) {
+                setSelectedSectionId(sections[0].id);
+              }
+            }
+            return; // Success, exit early
+          }
+        } catch (err) {
+          console.warn('Optimized weeks endpoint failed, falling back to legacy method', err);
+        }
+
+        // FALLBACK: Legacy method (slower, but works if new endpoint fails)
+        // Load sections for selected coordinator
         try {
           const rs = await fetch(`${apiBase}/api/v1/sections?requestedBy=chairperson`, { headers, credentials: 'include' });
           const ps = await rs.json().catch(() => []);
@@ -226,14 +260,41 @@ export default function ChairpersonDashboardPage() {
           const secs = allSecs.filter((s) => String(s.coordinator_id ?? s.coordinatorId) === String(selectedCoordinatorId));
           if (!cancelled) {
             setCoordinatorSections(secs.map((s) => ({ id: s.id, name: s.name })));
-            // Do not auto-select; user can choose specific section if multiple
             setSelectedSectionId("");
           }
         } catch (_) {
           if (!cancelled) { setCoordinatorSections([]); setSelectedSectionId(""); }
         }
 
-        // 1) Get all students in chairperson program and filter by coordinatorId
+        // Use existing coordinator endpoint (single query instead of N+1)
+        try {
+          const coordResp = await fetch(`${apiBase}/api/v1/weekly-entries/coordinator/${selectedCoordinatorId}`, {
+            headers,
+            credentials: "include",
+          });
+          
+          if (coordResp.ok) {
+            const coordData = await coordResp.json();
+            const entries = Array.isArray(coordData?.data) ? coordData.data : (Array.isArray(coordData) ? coordData : []);
+            const weekNums = new Set();
+            for (const row of entries) {
+              const wn = Number(row?.week_number ?? row?.weekNumber ?? row?.week);
+              if (!Number.isNaN(wn) && wn > 0) weekNums.add(wn);
+            }
+            const sorted = Array.from(weekNums).sort((a, b) => a - b);
+            if (!cancelled) {
+              setAvailableWeeks(sorted);
+              if (!sorted.includes(Number(selectedWeek))) {
+                setSelectedWeek(sorted.length ? sorted[0] : "");
+              }
+            }
+            return; // Success with coordinator endpoint
+          }
+        } catch (_) {
+          // Continue to final fallback
+        }
+
+        // FINAL FALLBACK: Original method (slowest, but most compatible)
         const r = await fetch(`${apiBase}/api/v1/chairperson/students`, { headers, credentials: "include" });
         const payload = await r.json().catch(() => ([]));
         const students = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload) ? payload : []);
@@ -249,47 +310,33 @@ export default function ChairpersonDashboardPage() {
           return String(cid ?? "") === String(selectedCoordinatorId ?? "");
         });
 
-        // Fallback: some chairperson student payloads only include coordinator name string
-        if (!filtered || filtered.length === 0) {
-          const r2 = await fetch(`${apiBase}/api/v1/users/students/get-all-students`, { headers, credentials: "include" });
-          const p2 = await r2.json().catch(() => ({}));
-          const list = Array.isArray(p2?.data) ? p2.data : (Array.isArray(p2?.initial_students) ? p2.initial_students : (Array.isArray(p2) ? p2 : []));
-          filtered = list.filter((s) => {
-            for (const key of coordinatorKeyNames) {
-              if (s && Object.prototype.hasOwnProperty.call(s, key)) {
-                return String(s[key] ?? "") === String(selectedCoordinatorId ?? "");
-              }
+        if (filtered && filtered.length > 0) {
+          const ids = filtered.map((s) => s.id ?? s.student_id ?? s.user_id ?? s.application_id).filter(Boolean);
+          // Limit to first 20 students to avoid too many requests
+          const limitedIds = ids.slice(0, 20);
+          const reqs = limitedIds.map((id) => fetch(`${apiBase}/api/v1/weekly-entries/student/${id}`, { headers, credentials: "include" })
+            .then((res) => res.json()).catch(() => ([])));
+          const results = await Promise.all(reqs);
+
+          const normalizeWeekly = (p) => {
+            if (!p) return [];
+            if (Array.isArray(p?.data)) return p.data;
+            if (Array.isArray(p?.weekly_entries)) return p.weekly_entries;
+            if (Array.isArray(p)) return p;
+            return [];
+          };
+          const all = results.flatMap((p) => normalizeWeekly(p));
+          const weekNums = new Set();
+          for (const row of all) {
+            const wn = Number(row?.week_number ?? row?.weekNumber ?? row?.week);
+            if (!Number.isNaN(wn) && wn > 0) weekNums.add(wn);
+          }
+          const sorted = Array.from(weekNums).sort((a, b) => a - b);
+          if (!cancelled) {
+            setAvailableWeeks(sorted);
+            if (!sorted.includes(Number(selectedWeek))) {
+              setSelectedWeek(sorted.length ? sorted[0] : "");
             }
-            const c = s.coordinator || s.ojt_coordinator || s.assignedCoordinator;
-            const cid = c ? (c.id ?? c.coordinator_id) : undefined;
-            return String(cid ?? "") === String(selectedCoordinatorId ?? "");
-          });
-        }
-
-        // 2) Fetch weekly entries per filtered student in parallel
-        const ids = filtered.map((s) => s.id ?? s.student_id ?? s.user_id ?? s.application_id).filter(Boolean);
-        const reqs = ids.map((id) => fetch(`${apiBase}/api/v1/weekly-entries/student/${id}`, { headers, credentials: "include" })
-          .then((res) => res.json()).catch(() => ([])));
-        const results = await Promise.all(reqs);
-
-        const normalizeWeekly = (p) => {
-          if (!p) return [];
-          if (Array.isArray(p?.data)) return p.data;
-          if (Array.isArray(p?.weekly_entries)) return p.weekly_entries;
-          if (Array.isArray(p)) return p;
-          return [];
-        };
-        const all = results.flatMap((p) => normalizeWeekly(p));
-        const weekNums = new Set();
-        for (const row of all) {
-          const wn = Number(row?.week_number ?? row?.weekNumber ?? row?.week);
-          if (!Number.isNaN(wn) && wn > 0) weekNums.add(wn);
-        }
-        const sorted = Array.from(weekNums).sort((a, b) => a - b);
-        if (!cancelled) {
-          setAvailableWeeks(sorted);
-          if (!sorted.includes(Number(selectedWeek))) {
-            setSelectedWeek(sorted.length ? sorted[0] : "");
           }
         }
       } catch {
@@ -301,7 +348,7 @@ export default function ChairpersonDashboardPage() {
     }
     loadWeeks();
     return () => { cancelled = true; };
-  }, [selectedCoordinatorId]);
+  }, [selectedCoordinatorId, selectedSectionId]);
 
   // Coordinators list removed from dashboard
 

@@ -182,7 +182,7 @@ const ViewReportsPage = ({ authorizeRole }) => {
     return () => { cancelled = true; };
   }, [students, selectedStudentId]);
 
-  // Fetch available weeks for selected student
+  // Fetch available weeks for selected student (OPTIMIZED)
   useEffect(() => {
     let cancel = false;
     if (!selectedStudentId) { 
@@ -193,15 +193,81 @@ const ViewReportsPage = ({ authorizeRole }) => {
     (async () => {
       try {
         setLoading(true);
-        const resp = await fetch(
-          `${import.meta.env.VITE_API_BASE_URL}/api/v1/weekly-entries/student/${selectedStudentId}`,
-          {
-            headers: {
-              Accept: "application/json",
-              Authorization: `Bearer ${JSON.parse(localStorage.getItem("ACCESS_TOKEN"))}`,
-            },
-            credentials: "include",
+        const apiBase = import.meta.env.VITE_API_BASE_URL;
+        const headers = {
+          Accept: "application/json",
+          Authorization: `Bearer ${JSON.parse(localStorage.getItem("ACCESS_TOKEN"))}`,
+        };
+
+        // OPTIMIZED: Try new endpoint first (single query for weeks only)
+        try {
+          const qp = new URLSearchParams({ studentId: selectedStudentId });
+          const weeksResp = await fetch(
+            `${apiBase}/api/v1/coordinator/available-weeks?${qp.toString()}`,
+            { headers, credentials: "include" }
+          );
+          
+          if (weeksResp.ok) {
+            const weeksData = await weeksResp.json();
+            const weeks = Array.isArray(weeksData?.weeks) ? weeksData.weeks : [];
+            
+            if (!cancel) {
+              setAvailableWeeks(weeks);
+            }
+            
+            // Still fetch full entries for table display (but only if we have weeks)
+            if (weeks.length > 0) {
+              const resp = await fetch(
+                `${apiBase}/api/v1/weekly-entries/student/${selectedStudentId}`,
+                { headers, credentials: "include" }
+              );
+              const payload = await resp.json().catch(() => []);
+              if (cancel) return;
+              const list = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];
+              
+              // Helper formatters
+              const truncate = (s, n = 300) => (s && s.length > n ? s.slice(0, n) + "…" : s);
+              const fmtDate = (s) => {
+                if (!s) return "";
+                const str = String(s).replace('T', ' ');
+                return str.slice(0, 16); // YYYY-MM-DD HH:mm
+              };
+
+              // Normalize ALL entries for status computation
+              const normalizedAll = list.map((e) => ({
+                id: e.id,
+                student_id: String(e.student_id ?? e.studentId ?? (selectedStudentId ?? "")),
+                week_number: Number(e.week_number ?? e.weekNumber ?? e.week),
+                start_date: fmtDate(e.start_date ?? e.startDate),
+                end_date: fmtDate(e.end_date ?? e.endDate),
+                tasks: truncate(String(e.tasks ?? e.task ?? e.activities ?? "").replace(/<\s*\/?[^>]*>/g, " ").replace(/\s+/g, " ").trim()),
+                learnings: truncate(String(e.learnings ?? e.learning ?? "").replace(/<\s*\/?[^>]*>/g, " ").replace(/\s+/g, " ").trim()),
+                no_of_hours: e.no_of_hours ?? e.hours ?? e.noOfHours ?? 0,
+                created_at: fmtDate(e.created_at ?? e.createdAt),
+              }));
+              setAllEntries(normalizedAll);
+              
+              // Filter entries by selected week for the grid
+              const filtered = normalizedAll.filter((e) => e.week_number === Number(selectedWeek));
+              if (!cancel) {
+                setRows(filtered);
+              }
+            } else {
+              if (!cancel) {
+                setRows([]);
+                setAllEntries([]);
+              }
+            }
+            return; // Success with optimized endpoint
           }
+        } catch (err) {
+          console.warn('Optimized weeks endpoint failed, falling back', err);
+        }
+
+        // FALLBACK: Original method (fetch all entries)
+        const resp = await fetch(
+          `${apiBase}/api/v1/weekly-entries/student/${selectedStudentId}`,
+          { headers, credentials: "include" }
         );
         const payload = await resp.json().catch(() => []);
         if (cancel) return;
@@ -213,7 +279,9 @@ const ViewReportsPage = ({ authorizeRole }) => {
           return Number.isNaN(wn) ? null : wn;
         }).filter(Boolean))].sort((a, b) => a - b);
         
-        setAvailableWeeks(weeksWithData);
+        if (!cancel) {
+          setAvailableWeeks(weeksWithData);
+        }
         
         // Helper formatters
         const truncate = (s, n = 300) => (s && s.length > n ? s.slice(0, n) + "…" : s);

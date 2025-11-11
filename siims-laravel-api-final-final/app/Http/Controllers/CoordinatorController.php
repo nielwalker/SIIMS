@@ -239,40 +239,46 @@ class CoordinatorController extends UserController
 
     /**
      * Summary of getAllListsOfCoordinators: A public function that gets all the list of coordinators
+     * OPTIMIZED: Uses selective eager loading to prevent N+1 queries
      * @return \Illuminate\Http\JsonResponse
      */
     public function getAllListsOfCoordinators() {
 
-        // Get authenticataed user
+        // Get authenticated user
         $user = Auth::user();
 
         // Declare a variable
         $listOfCoordinators = null;
 
+        // OPTIMIZED: Only select needed columns and use selective eager loading
         // ! FOR ADMIN
         if($user->hasRole('admin')) {
-            // Get All User (Coordinator) Info
-            $listOfCoordinators = Coordinator::with(['user'])->get();
+            // Get All User (Coordinator) Info - only load needed fields
+            $listOfCoordinators = Coordinator::select('id', 'program_id')
+                ->with(['user:id,first_name,middle_name,last_name']) // Only needed user fields
+                ->get();
         }
 
         // ! FOR DEAN
         else if($user->hasRole('dean')) {
-
-            // Get All User (Coordinator) Info
-            $listOfCoordinators = Coordinator::with(['user'])->whereHas('program.college', function ($query) use ($user) {
-                $query->where('dean_id', $user->id);
-            })->get();
-
+            // Get All User (Coordinator) Info - only load needed fields
+            $listOfCoordinators = Coordinator::select('id', 'program_id')
+                ->with(['user:id,first_name,middle_name,last_name']) // Only needed user fields
+                ->whereHas('program.college', function ($query) use ($user) {
+                    $query->where('dean_id', $user->id);
+                })
+                ->get();
         }
         
         // ! FOR CHAIRPERSON
         else if($user->hasRole('chairperson')) {
-
-            // Get All User (Coordinator) Info
-            $listOfCoordinators = Coordinator::with(['user'])->whereHas('program', function ($query) use ($user) {
-                $query->where('chairperson_id', $user->id);
-            })->get();
-
+            // OPTIMIZED: Get All User (Coordinator) Info - only load needed fields
+            $listOfCoordinators = Coordinator::select('id', 'program_id')
+                ->with(['user:id,first_name,middle_name,last_name']) // Only needed user fields
+                ->whereHas('program', function ($query) use ($user) {
+                    $query->where('chairperson_id', $user->id);
+                })
+                ->get();
         }
        
         // Transform list of coordinators
@@ -288,8 +294,12 @@ class CoordinatorController extends UserController
             ];
         });
 
-        // Return list of coordinators
-        return $this->jsonResponse($transformedCoordinators, 200);
+        // Return list of coordinators with CORS headers
+        return $this->jsonResponse($transformedCoordinators, 200, [
+            'Access-Control-Allow-Origin' => '*',
+            'Access-Control-Allow-Methods' => 'GET, OPTIONS',
+            'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With',
+        ]);
 
     }
 
@@ -312,10 +322,18 @@ class CoordinatorController extends UserController
         // Declare variable query
         $query = null;
 
+        // OPTIMIZED: Use selective eager loading to prevent N+1 queries
         // ! For Admin
         if($user->hasRole('admin')) {
-            // Get All User (Coordinator) Info
-            $query = Coordinator::with(['user', 'program.college', 'sections'])->withCount(['students']);
+            // Get All User (Coordinator) Info - only load needed fields
+            $query = Coordinator::select('id', 'program_id', 'user_id')
+                ->with([
+                    'user:id,first_name,middle_name,last_name,email,phone_number', // Only needed user fields
+                    'program:id,name,college_id', // Only program name
+                    'program.college:id,name', // Only college name
+                    'sections:id,name,coordinator_id' // Only section names
+                ])
+                ->withCount(['students']);
         }
 
         // ! For Dean
@@ -327,10 +345,18 @@ class CoordinatorController extends UserController
                 return $this->jsonResponse(['message' => 'College not found.'], 403);
             }
 
-            // Get all coordinators that belong to a specific college
-            $query = Coordinator::with(['user', 'program.college', 'sections'])->withCount(['students'])->whereHas('program', function ($query) use ($college) {
-                $query->where('college_id', $college->id);
-            });
+            // Get all coordinators that belong to a specific college - only load needed fields
+            $query = Coordinator::select('id', 'program_id', 'user_id')
+                ->with([
+                    'user:id,first_name,middle_name,last_name,email,phone_number',
+                    'program:id,name,college_id',
+                    'program.college:id,name',
+                    'sections:id,name,coordinator_id'
+                ])
+                ->withCount(['students'])
+                ->whereHas('program', function ($query) use ($college) {
+                    $query->where('college_id', $college->id);
+                });
 
         }
 
@@ -343,8 +369,15 @@ class CoordinatorController extends UserController
                 return $this->jsonResponse(['message' => 'Program not found.'], 403);
             }
 
-             // Get all coordinators that belong to a specific program
-             $query = Coordinator::with(['user', 'program', 'sections'])->withCount(['students'])->where('program_id', $program->id);
+             // OPTIMIZED: Get all coordinators that belong to a specific program - only load needed fields
+             $query = Coordinator::select('id', 'program_id', 'user_id')
+                 ->with([
+                     'user:id,first_name,middle_name,last_name,email,phone_number',
+                     'program:id,name',
+                     'sections:id,name,coordinator_id'
+                 ])
+                 ->withCount(['students'])
+                 ->where('program_id', $program->id);
 
         }
 
@@ -375,8 +408,16 @@ class CoordinatorController extends UserController
     public function getAllCoordinatorsByProgramId(String $program_id)
     {
 
-        // Get all Coordinators by program_id
-        $coordinators = Coordinator::where('program_id', $program_id)->with(['user', 'program.college'])->withCount(['students'])->get();
+        // OPTIMIZED: Get all Coordinators by program_id - only load needed fields
+        $coordinators = Coordinator::select('id', 'program_id', 'user_id')
+            ->where('program_id', $program_id)
+            ->with([
+                'user:id,first_name,middle_name,last_name,email,phone_number',
+                'program:id,name,college_id',
+                'program.college:id,name'
+            ])
+            ->withCount(['students'])
+            ->get();
 
         // Check if Coordinators exist
         if (!$coordinators) {

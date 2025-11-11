@@ -10,6 +10,10 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('/coordinator')->middleware('role:coordinator')->group(function () {
 
+  // Optimized endpoint for getting available weeks for a student
+  // resources: /coordinator/available-weeks
+  Route::get('/available-weeks', [\App\Http\Controllers\Api\Coordinator\CoordinatorWeeksController::class, 'getAvailableWeeks']);
+
   // My profile
   // resources: /coordinator/profile
   Route::prefix('/profile')->group(function () {

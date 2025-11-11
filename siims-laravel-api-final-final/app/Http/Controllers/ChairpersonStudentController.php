@@ -205,19 +205,36 @@ class ChairpersonStudentController extends Controller
                 'message' => 'No program assigned to the authenticated user.'
             ], 403); // HTTP Forbidden
         }
-        // Get all students enrolled in the program
-        // $students = $program->students; // Assuming there's a `students` relationship in the Program model
-
-        // Get all students with their latest application and company info
-        // Eager load section with coordinator to allow fallback to section's coordinator
-        $students = Student::with(['user', 'coordinator.user', 'company', 'section.coordinator.user', 'latestApplication.workPost.office.company', 'workExperiences'])->where('program_id', $program->id)->get();
+        // OPTIMIZED: Get all students with selective eager loading to prevent N+1 queries
+        // Only load relationships that are actually needed for the transform
+        $students = Student::select('id', 'user_id', 'coordinator_id', 'section_id', 'program_id', 'company_id')
+            ->with([
+                'user:id,first_name,middle_name,last_name,email', // Only needed user fields
+                'coordinator:id,user_id', // Only coordinator ID and user_id for relationship
+                'coordinator.user:id,first_name,middle_name,last_name', // Only coordinator user fields needed
+                'company:id,name', // Only company name
+                'section:id,name,coordinator_id', // Only section name and coordinator_id
+                'section.coordinator:id,user_id', // Section's coordinator if needed
+                'section.coordinator.user:id,first_name,middle_name,last_name', // Section coordinator user
+                'latestApplication:id,student_id,work_post_id', // Only IDs for relationship
+                'latestApplication.workPost:id,office_id', // Only IDs
+                'latestApplication.workPost.office:id,company_id', // Only IDs
+                'latestApplication.workPost.office.company:id,name', // Only company name
+                'workExperiences:id,student_id,company_name,created_at', // Only needed fields
+            ])
+            ->where('program_id', $program->id)
+            ->get();
 
         $transformedStudents = $students->map(function ($student) {
             return $this->transform($student);
         });
 
-        // Return the list of students with a success response
-        return response()->json($transformedStudents, 200); // HTTP OK
+        // Return the list of students with a success response and CORS headers
+        return response()->json($transformedStudents, 200, [
+            'Access-Control-Allow-Origin' => '*',
+            'Access-Control-Allow-Methods' => 'GET, OPTIONS',
+            'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With',
+        ]);
     }
 
     private function transform($student)
@@ -249,15 +266,11 @@ class ChairpersonStudentController extends Controller
         $coordinatorId = $student->coordinator_id;
         
         // If student has no coordinator but has a section with a coordinator, use section's coordinator
+        // OPTIMIZED: Don't save during transform to avoid N+1 save queries - handle this separately if needed
         if (!$coordinator && $student->section && $student->section->coordinator) {
             $coordinator = $student->section->coordinator;
             $coordinatorId = $coordinator->id;
-            
-            // Optionally sync the coordinator_id to the student record for consistency
-            if (!$student->coordinator_id && $coordinatorId) {
-                $student->coordinator_id = $coordinatorId;
-                $student->save();
-            }
+            // Note: Removed automatic save to prevent performance issues with many students
         }
 
         // Show section if student has one assigned

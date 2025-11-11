@@ -12,13 +12,20 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Add CORS middleware FIRST to handle preflight requests
         $middleware->api(prepend: [
+            \App\Http\Middleware\HandleCors::class,
             \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             // Disable CSRF for API routes to avoid 419 on same-origin cookies
             \App\Http\Middleware\DisableCsrfForApi::class,
         ]);
 
         $middleware->statefulApi();
+        
+        // Enable CORS for all API routes
+        $middleware->validateCsrfTokens(except: [
+            'api/*',
+        ]);
 
         $middleware->alias([
             'verified' => \App\Http\Middleware\EnsureEmailIsVerified::class,

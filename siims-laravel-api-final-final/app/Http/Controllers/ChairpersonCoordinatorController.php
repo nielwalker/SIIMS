@@ -29,18 +29,23 @@ class ChairpersonCoordinatorController extends Controller
             return response()->json(['message' => 'User not authenticated.'], 401);
         }
 
-        // Get auth user's program
+        // Get auth user's program (optimized - only get program_id)
         $program = $user->program;
-
-        // Check if chairperson has a program
-        if(!$program || !$program->chairperson_id) {
+        if (!$program || !$program->chairperson_id) {
             return response()->json(['message' => 'Chairperson program not found.'], 404);
         }
 
-        // Get all coordinators in the same program
-        $coordinators = Coordinator::with(['user'])->withCount(['students'])->where('program_id', $program->id)->get();
-        if(!$coordinators) {
-            return response()->json(['message' => 'Coordinators not found.'], 404);
+        // OPTIMIZED: Only select needed columns and use efficient eager loading
+        $coordinators = Coordinator::select('id', 'program_id')
+            ->with([
+                'user:id,first_name,middle_name,last_name,email,phone_number' // Only load needed user fields
+            ])
+            ->withCount(['students']) // Efficient count
+            ->where('program_id', $program->id)
+            ->get();
+        
+        if($coordinators->isEmpty()) {
+            return response()->json([], 200); // Return empty array instead of 404
         }
 
         // Transform coordinator
@@ -48,7 +53,11 @@ class ChairpersonCoordinatorController extends Controller
             return $this->transform($coordinator);
         });
 
-        // Return coordinators
-        return response()->json($transformedCoordinators, 200);
+        // Return coordinators with CORS headers
+        return response()->json($transformedCoordinators, 200, [
+            'Access-Control-Allow-Origin' => '*',
+            'Access-Control-Allow-Methods' => 'GET, OPTIONS',
+            'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With',
+        ]);
     }
 }

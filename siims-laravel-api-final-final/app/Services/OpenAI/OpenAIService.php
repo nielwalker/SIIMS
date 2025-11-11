@@ -17,9 +17,9 @@ class OpenAIService
      * Default configuration
      */
     private const DEFAULT_MODEL = 'gpt-4o-mini';
-    private const DEFAULT_MAX_TOKENS = 3000;
+    private const DEFAULT_MAX_TOKENS = 2000; // Reduced for faster responses
     private const DEFAULT_TEMPERATURE = 0.2;
-    private const DEFAULT_TIMEOUT = 90;
+    private const DEFAULT_TIMEOUT = 45; // Reduced from 90 to 45 seconds for faster failure detection
 
     /**
      * Call OpenAI API with the given parameters

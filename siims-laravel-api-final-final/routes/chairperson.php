@@ -45,6 +45,10 @@ Route::prefix('/chairperson')->middleware('role:chairperson')->group(function ()
       Route::post('/import-students', [ChairpersonStudentController::class, 'importStudents']);
     });
 
+    // Optimized endpoint for getting available weeks
+    // resources: /chairperson/available-weeks
+    Route::get('/available-weeks', [\App\Http\Controllers\Api\Chairperson\ChairpersonWeeksController::class, 'getAvailableWeeks']);
+
     // Endorsement Route
     // resources: /chairperson/endorsement-letter-requests
     Route::prefix('/endorsement-letter-requests')->group(function () {

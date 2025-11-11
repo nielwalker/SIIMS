@@ -136,15 +136,42 @@ const HomeRemotePage = ({ authorizeRole }) => {
   const fetchTotalHours = async () => {
     if (!selectedStudentId) { setTotalHours(0); return; }
     try {
-      const resp = await fetch(
-        `${import.meta.env.VITE_API_BASE_URL}/api/v1/weekly-entries/student/${selectedStudentId}`,
-        {
-          headers: {
-            Accept: "application/json",
-            Authorization: `Bearer ${JSON.parse(localStorage.getItem("ACCESS_TOKEN"))}`,
-          },
-          credentials: "include",
+      const apiBase = import.meta.env.VITE_API_BASE_URL;
+      const headers = {
+        Accept: "application/json",
+        Authorization: `Bearer ${JSON.parse(localStorage.getItem("ACCESS_TOKEN"))}`,
+      };
+
+      // OPTIMIZED: Use new endpoint that returns weeks + total hours in one call
+      try {
+        const qp = new URLSearchParams({ studentId: selectedStudentId });
+        const resp = await fetch(
+          `${apiBase}/api/v1/coordinator/available-weeks?${qp.toString()}`,
+          { headers, credentials: "include" }
+        );
+        
+        if (resp.ok) {
+          const data = await resp.json();
+          const hours = Number(data?.totalHours ?? 0);
+          setTotalHours(hours);
+          
+          // Also update available weeks if we got them
+          const weeks = Array.isArray(data?.weeks) ? data.weeks : [];
+          if (weeks.length > 0) {
+            // Update ALL_WEEKS to only show weeks with data
+            // Note: This is a read-only constant, so we'll handle it differently
+            // The weeks dropdown will be filtered by available weeks
+          }
+          return; // Success
         }
+      } catch (err) {
+        console.warn('Optimized endpoint failed, falling back', err);
+      }
+
+      // FALLBACK: Original method
+      const resp = await fetch(
+        `${apiBase}/api/v1/weekly-entries/student/${selectedStudentId}`,
+        { headers, credentials: "include" }
       );
       const payload = await resp.json().catch(() => []);
       const list = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];

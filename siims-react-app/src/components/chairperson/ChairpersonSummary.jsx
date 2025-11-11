@@ -402,7 +402,10 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
         qp.set('useGPT', '1');
         const resp = await fetch(`${apiBase}/api/v1/summary/chair?${qp.toString()}`, {
           method: 'GET',
-          headers: authHeaders,
+          headers: {
+            ...authHeaders,
+            'X-Requested-With': 'XMLHttpRequest',
+          },
           credentials: 'include',
         });
         
@@ -611,64 +614,64 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
       try {
         setError(null);
 
-        // For "overall" case, create a comprehensive summary from all data
-        if (week === "overall") {
-          
-          
-          // 1) Load students under this coordinator directly (chairperson-safe endpoint)
-          let filteredStudents = [];
+        // 1) Load students under this coordinator directly (chairperson-safe endpoint)
+        // This needs to be defined outside the if block so it's always available
+        let filteredStudents = [];
+        try {
+          const r = await fetch(`${apiBase}/api/v1/chairperson/students`, {
+            headers: authHeaders,
+            credentials: "include",
+          });
+          const p1 = await r.json().catch(() => []);
+          const arr = Array.isArray(p1?.data) ? p1.data : Array.isArray(p1) ? p1 : [];
+          const coordinatorKeyNames = ["coordinator_id", "coordinatorId", "coordinatorID", "coordinator_id_fk"];
+          filteredStudents = arr.filter((s) => {
+            for (const key of coordinatorKeyNames) {
+              if (s && Object.prototype.hasOwnProperty.call(s, key)) {
+                return String(s[key] ?? "") === String(coordinatorId ?? "");
+              }
+            }
+            const c = s.coordinator || s.ojt_coordinator || s.assignedCoordinator;
+            const cid = c ? (c.id ?? c.coordinator_id) : undefined;
+            return String(cid ?? "") === String(coordinatorId ?? "");
+          });
+        } catch {}
+        
+        if (filteredStudents.length === 0) {
+          // Fallback: use generic endpoints and filter client-side
           try {
-            const r = await fetch(`${apiBase}/api/v1/chairperson/students`, {
-              headers: authHeaders,
-              credentials: "include",
-            });
-            const p1 = await r.json().catch(() => []);
-            const arr = Array.isArray(p1?.data) ? p1.data : Array.isArray(p1) ? p1 : [];
-            const coordinatorKeyNames = ["coordinator_id", "coordinatorId", "coordinatorID", "coordinator_id_fk"];
-            filteredStudents = arr.filter((s) => {
+            const studentsResp = await axiosClient.get("/api/v1/users/students/get-all-students");
+            const studentsPayload = studentsResp?.data;
+            let students = Array.isArray(studentsPayload?.data)
+              ? studentsPayload.data
+              : Array.isArray(studentsPayload?.initial_students)
+              ? studentsPayload.initial_students
+              : Array.isArray(studentsPayload)
+              ? studentsPayload
+              : [];
+
+            const coordinatorKeyNames = ["coordinator_id", "coordinatorId", "coordinatorID", "coordinator" ];
+            const idToUse = coordinatorId;
+            filteredStudents = students.filter((s) => {
               for (const key of coordinatorKeyNames) {
                 if (s && Object.prototype.hasOwnProperty.call(s, key)) {
-                  return String(s[key] ?? "") === String(coordinatorId ?? "");
+                  return String(s[key] ?? "") === String(idToUse ?? "");
                 }
               }
-              const c = s.coordinator || s.ojt_coordinator || s.assignedCoordinator;
-              const cid = c ? (c.id ?? c.coordinator_id) : undefined;
-              return String(cid ?? "") === String(coordinatorId ?? "");
+              return false;
             });
-          } catch {}
-          
-          if (filteredStudents.length === 0) {
-            // Fallback: use generic endpoints and filter client-side
-            try {
-              const studentsResp = await axiosClient.get("/api/v1/users/students/get-all-students");
-              const studentsPayload = studentsResp?.data;
-              let students = Array.isArray(studentsPayload?.data)
-                ? studentsPayload.data
-                : Array.isArray(studentsPayload?.initial_students)
-                ? studentsPayload.initial_students
-                : Array.isArray(studentsPayload)
-                ? studentsPayload
-                : [];
-
-              const coordinatorKeyNames = ["coordinator_id", "coordinatorId", "coordinatorID", "coordinator" ];
-              const idToUse = coordinatorId;
+            if (filteredStudents.length === 0) {
               filteredStudents = students.filter((s) => {
-                for (const key of coordinatorKeyNames) {
-                  if (s && Object.prototype.hasOwnProperty.call(s, key)) {
-                    return String(s[key] ?? "") === String(idToUse ?? "");
-                  }
-                }
-                return false;
+                const c = s.coordinator || s.ojt_coordinator || s.assignedCoordinator;
+                const cid = c ? (c.id ?? c.coordinator_id) : undefined;
+                return String(cid ?? "") === String(idToUse ?? "");
               });
-              if (filteredStudents.length === 0) {
-                filteredStudents = students.filter((s) => {
-                  const c = s.coordinator || s.ojt_coordinator || s.assignedCoordinator;
-                  const cid = c ? (c.id ?? c.coordinator_id) : undefined;
-                  return String(cid ?? "") === String(idToUse ?? "");
-                });
-              }
-            } catch {}
-          }
+            }
+          } catch {}
+        }
+
+        // For "overall" case, create a comprehensive summary from all data
+        if (week === "overall") {
           
         }
 

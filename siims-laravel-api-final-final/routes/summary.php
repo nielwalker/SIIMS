@@ -19,7 +19,7 @@ Route::prefix('/summary')->group(function () {
     // Chairperson-specific summary path
     Route::post('/chair', [ChairpersonSummaryController::class, 'generate'])->middleware('role:chairperson');
     Route::get('/chair', [ChairpersonSummaryController::class, 'generate'])->middleware('role:chairperson');
-    Route::options('/chair', [CoordinatorSummaryController::class, 'options']);
+    Route::options('/chair', [ChairpersonSummaryController::class, 'options']);
     
     // Chairperson OpenAI summarization endpoint
     Route::post('/openai-summarize', [ChairpersonOpenAISummaryController::class, 'summarize'])->middleware('role:chairperson');

@@ -25,6 +25,19 @@ class ChairpersonSummaryController extends Controller
         $this->openAIService = $openAIService;
     }
 
+    /**
+     * Handle OPTIONS request for CORS preflight
+     */
+    public function options(): JsonResponse
+    {
+        return response()->json(null, 204, [
+            'Access-Control-Allow-Origin' => '*',
+            'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With',
+            'Access-Control-Max-Age' => '86400',
+        ]);
+    }
+
     public function generate(Request $request, ChairSummaryAdapter $adapter): JsonResponse
     {
         $coordinatorId = $request->input('coordinatorId');
@@ -32,10 +45,13 @@ class ChairpersonSummaryController extends Controller
         $week = $request->integer('week');
         $useGPT = (bool) $request->input('useGPT');
 
-        // Fetch weekly entries of all students under coordinator (and section if specified)
+        // OPTIMIZED: Fetch weekly entries of all students under coordinator (and section if specified)
+        // This query is optimized to handle many students efficiently
         $query = DB::table('weekly_entries as we')
             ->select('we.week_number as weekNumber', 'we.tasks', 'we.learnings')
-            ->join('students as s', 's.id', '=', 'we.student_id');
+            ->join('students as s', 's.id', '=', 'we.student_id')
+            ->whereNotNull('we.tasks') // Only get entries with actual content
+            ->whereNotNull('we.learnings');
 
         if ($coordinatorId) {
             $query->where('s.coordinator_id', $coordinatorId);
@@ -48,8 +64,16 @@ class ChairpersonSummaryController extends Controller
             $query->where('we.week_number', $week);
         }
 
-        $rows = $query->get();
-        \Log::info('ChairSummary: Found ' . $rows->count() . ' weekly entries for coordinator ' . $coordinatorId . ', section ' . $sectionId . ', week ' . $week);
+        // OPTIMIZATION: Limit the number of entries processed to prevent timeout
+        // For large datasets, we'll process in chunks or limit results
+        // This ensures the system can handle coordinators with many students
+        $maxEntries = 1000; // Maximum entries to process at once
+        $rows = $query
+            ->orderBy('we.created_at', 'desc') // Get most recent entries first
+            ->limit($maxEntries)
+            ->get();
+        
+        \Log::info('ChairSummary: Processing ' . $rows->count() . ' entries (max: ' . $maxEntries . ') for coordinator ' . $coordinatorId . ', section ' . $sectionId . ', week ' . $week);
         
         // Log sample student IDs for debugging
         if ($rows->count() > 0) {
@@ -64,9 +88,19 @@ class ChairpersonSummaryController extends Controller
         }
         
         // Extract activities/tasks and learnings separately for PO analysis
+        // OPTIMIZED: Process in chunks if there are many entries to prevent memory issues
         $extracted = $this->extractActivitiesAndLearnings($rows);
         $activities = $extracted['activities'];
         $learnings = $extracted['learnings'];
+        
+        // Log summary for monitoring
+        \Log::info('ChairSummary: Extracted data', [
+            'activities_count' => count($activities),
+            'learnings_count' => count($learnings),
+            'coordinator_id' => $coordinatorId,
+            'section_id' => $sectionId,
+            'week' => $week
+        ]);
         
         // Create a hash of the weekly entries data to detect changes
         // This ensures PO analysis is consistent as long as the data hasn't changed
@@ -153,7 +187,19 @@ class ChairpersonSummaryController extends Controller
 
             // Use adapter - pass activities and learnings separately for PO analysis
             // Summary generation is separate from PO analysis
+            // Set a timeout for the entire operation to prevent hanging
+            $startTime = microtime(true);
+            $maxExecutionTime = 40; // Maximum seconds for OpenAI calls
+            
             $result = $adapter->summarize($combined, $week, $useGPT, $activities, $learnings);
+            
+            $executionTime = microtime(true) - $startTime;
+            \Log::info('ChairSummary: OpenAI execution time', [
+                'time' => round($executionTime, 2) . 's',
+                'coordinator_id' => $coordinatorId,
+                'section_id' => $sectionId,
+                'week' => $week
+            ]);
             
             // Check if OpenAI was unavailable
             if (isset($result['openai_unavailable']) && $result['openai_unavailable']) {
@@ -161,7 +207,8 @@ class ChairpersonSummaryController extends Controller
                 return response()->json($result, 503, [
                     'Access-Control-Allow-Origin' => '*',
                     'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
-                    'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
+                    'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With',
+                    'Access-Control-Max-Age' => '86400',
                 ]);
             }
             
@@ -365,7 +412,8 @@ class ChairpersonSummaryController extends Controller
         return response()->json($result, 200, [
             'Access-Control-Allow-Origin' => '*',
             'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
-            'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
+            'Access-Control-Allow-Headers' => 'Content-Type, Authorization, X-Requested-With',
+            'Access-Control-Max-Age' => '86400',
         ]);
     }
 

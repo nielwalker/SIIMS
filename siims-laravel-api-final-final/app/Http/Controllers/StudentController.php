@@ -86,9 +86,25 @@ class StudentController extends UserController
         // ! FOR CHAIRPERSON
         else if (($user->hasRole('chairperson') && $requestedBy === 'chairperson') || ($user->hasRole('chairperson') && $requestedBy === 'admin')) {
 
-            // Get all Students
-            // Treat chairperson like admin: can see all students
-            $query = Student::with(['user', 'program.college', 'status', 'studentStatus', 'coordinator.user', 'company', 'latestApplication.workPost.office.company', 'workExperiences'])->withCount(['applications', 'endorsementLetterRequests']);
+            // OPTIMIZED: Get all Students with selective eager loading
+            // Only load relationships that are actually needed to prevent N+1 queries
+            $query = Student::select('id', 'user_id', 'coordinator_id', 'section_id', 'program_id', 'company_id', 'status_id', 'student_status_id')
+                ->with([
+                    'user:id,first_name,middle_name,last_name,email', // Only needed user fields
+                    'program:id,name,college_id', // Only program name
+                    'program.college:id,name', // Only college name
+                    'status:id,name', // Only status name
+                    'studentStatus:id,name', // Only student status name
+                    'coordinator:id,user_id', // Only coordinator ID
+                    'coordinator.user:id,first_name,middle_name,last_name', // Only coordinator user fields
+                    'company:id,name', // Only company name
+                    'latestApplication:id,student_id,work_post_id', // Only IDs for relationship
+                    'latestApplication.workPost:id,office_id', // Only IDs
+                    'latestApplication.workPost.office:id,company_id', // Only IDs
+                    'latestApplication.workPost.office.company:id,name', // Only company name
+                    'workExperiences:id,student_id,company_name,created_at', // Only needed fields
+                ])
+                ->withCount(['applications', 'endorsementLetterRequests']);
         }
 
         // ! FOR COMPANY

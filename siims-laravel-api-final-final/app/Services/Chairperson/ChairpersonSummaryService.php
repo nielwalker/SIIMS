@@ -54,12 +54,12 @@ class ChairpersonSummaryService
             // Build prompt using ChairpersonPOPromptBuilder
             $prompt = $this->promptBuilder->buildPOAnalysisPrompt($clean, $week, $activities, $learnings);
             
-            // Call OpenAI API
+            // Call OpenAI API with optimized settings for faster responses
             $response = $this->openAIService->call($prompt, [
                 'model' => 'gpt-4o-mini',
-                'max_tokens' => 3000,
+                'max_tokens' => 2000, // Reduced for faster responses
                 'temperature' => 0.2,
-                'timeout' => 90,
+                'timeout' => 45, // Reduced timeout for faster failure detection
                 'top_p' => 0.95,
             ]);
 
