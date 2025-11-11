@@ -50,115 +50,145 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
       let poWordHitFromBackend = null; // holds AI keyword-based PO hits when available
       let posHitFromBackend = null; // holds OpenAI's pos_hit array (complete PO analysis)
 
-      const computeScores = async (skipHitLists = false) => {
-        // Load students under this coordinator directly
-        let filteredStudents = [];
-        try {
-          // Chairperson endpoint: returns all students under chairperson's program
-          const r = await fetch(`${apiBase}/api/v1/chairperson/students`, {
-            headers: authHeaders,
-            credentials: "include",
-          });
-          const p1 = await r.json().catch(() => []);
-          let students = Array.isArray(p1?.data) ? p1.data : Array.isArray(p1) ? p1 : [];
-          // Filter by selected coordinator
-          filteredStudents = students.filter((s) => {
-            const sid = s.coordinator_id ?? s.coordinatorId ?? s.coordinatorID;
-            const matchesCoordinator = String(sid ?? '') === String(coordinatorId ?? '');
-            // Also filter by section if sectionId is provided
-            if (matchesCoordinator && sectionId) {
-              // Check multiple possible field names for section ID
-              const section_id = s.section_id ?? s.sectionId ?? s.sectionID ?? s.section?.id ?? (typeof s.section === 'object' && s.section ? s.section.id : null);
-              return String(section_id ?? '') === String(sectionId ?? '');
-            }
-            return matchesCoordinator;
-          });
-        } catch {}
-        // If the chairperson endpoint payload doesn't include coordinator_id, fallback to full-students list
-        if (!filteredStudents || filteredStudents.length === 0) {
+      const computeScores = async (skipHitLists = false, backendData = null) => {
+        // OPTIMIZATION: If backend data is provided, use it directly instead of fetching individual students
+        // This eliminates N+1 queries when a week is selected
+        let text = '';
+        
+        if (backendData && backendData.activities && backendData.learnings) {
+          // Use activities and learnings from backend (already filtered by coordinator, section, and week)
+          const activities = Array.isArray(backendData.activities) ? backendData.activities : [];
+          const learnings = Array.isArray(backendData.learnings) ? backendData.learnings : [];
+          
+          // Build text from backend data for keyword matching
+          const stripHtml = (t) => String(t || "")
+            .replace(/<\s*\/?.*?>/g, ' ')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/&amp;/gi, '&')
+            .replace(/&lt;/gi, '<')
+            .replace(/&gt;/gi, '>')
+            .replace(/\s+/g, ' ')
+            .trim();
+          
+          // Combine activities and learnings into text for keyword matching
+          const activitiesText = activities.map(a => stripHtml(a)).join(' ');
+          const learningsText = learnings.map(l => stripHtml(l)).join(' ');
+          text = `${activitiesText} ${learningsText}`.toLowerCase();
+          
+          // Skip individual student fetching - use backend data directly
+          // Continue with PO scoring using backend data (this is much faster)
+        } else {
+          // Fallback: Only fetch individual students if backend data is not available
+          // This should rarely happen as the backend endpoint should always return data
+          let filteredStudents = [];
           try {
-            const studentsResp = await fetch(`${apiBase}/api/v1/users/students/get-all-students`, {
+            // Chairperson endpoint: returns all students under chairperson's program
+            const r = await fetch(`${apiBase}/api/v1/chairperson/students`, {
               headers: authHeaders,
               credentials: "include",
             });
-            const studentsPayload = await studentsResp.json().catch(() => ({}));
-            let students = Array.isArray(studentsPayload?.data)
-              ? studentsPayload.data
-              : Array.isArray(studentsPayload?.initial_students)
-              ? studentsPayload.initial_students
-              : Array.isArray(studentsPayload)
-              ? studentsPayload
-              : [];
-            const coordinatorKeyNames = ["coordinator_id", "coordinatorId", "coordinatorID", "coordinator_id_fk"];
+            const p1 = await r.json().catch(() => []);
+            let students = Array.isArray(p1?.data) ? p1.data : Array.isArray(p1) ? p1 : [];
+            // Filter by selected coordinator
             filteredStudents = students.filter((s) => {
-              let matchesCoordinator = false;
-              for (const key of coordinatorKeyNames) {
-                if (s && Object.prototype.hasOwnProperty.call(s, key)) {
-                  matchesCoordinator = String(s[key] ?? "") === String(coordinatorId ?? "");
-                  break;
-                }
-              }
-              if (!matchesCoordinator) {
-                const c = s.coordinator || s.ojt_coordinator || s.assignedCoordinator;
-                const cid = c ? (c.id ?? c.coordinator_id) : undefined;
-                matchesCoordinator = String(cid ?? "") === String(coordinatorId ?? "");
-              }
+              const sid = s.coordinator_id ?? s.coordinatorId ?? s.coordinatorID;
+              const matchesCoordinator = String(sid ?? '') === String(coordinatorId ?? '');
               // Also filter by section if sectionId is provided
               if (matchesCoordinator && sectionId) {
-                const section_id = s.section_id ?? s.sectionId ?? s.sectionID ?? s.section?.id;
+                // Check multiple possible field names for section ID
+                const section_id = s.section_id ?? s.sectionId ?? s.sectionID ?? s.section?.id ?? (typeof s.section === 'object' && s.section ? s.section.id : null);
                 return String(section_id ?? '') === String(sectionId ?? '');
               }
               return matchesCoordinator;
             });
           } catch {}
-        }
-        const requests = filteredStudents.map((s) => {
-          const sid = s.id ?? s.student_id ?? s.user_id ?? s.application_id;
-          return fetch(`${apiBase}/api/v1/weekly-entries/student/${sid}`, {
-            headers: authHeaders,
-            credentials: "include",
-          }).then((r) => r.json()).catch(() => [])
-        });
-        const results = await Promise.all(requests);
-        const normalizeWeekly = (payload) => {
-          if (!payload) return [];
-          if (Array.isArray(payload?.data)) return payload.data;
-          if (Array.isArray(payload?.weekly_entries)) return payload.weekly_entries;
-          if (Array.isArray(payload)) return payload;
-          return [];
-        };
-        const stripHtml = (t) => String(t || "")
-          .replace(/<\s*\/?.*?>/g, ' ')
-          .replace(/&nbsp;/gi, ' ')
-          .replace(/&amp;/gi, '&')
-          .replace(/&lt;/gi, '<')
-          .replace(/&gt;/gi, '>')
-          .replace(/\s+/g, ' ')
-          .trim();
-        const weekNum = Number(week || 1);
-        const allEntries = results.flatMap((p) => normalizeWeekly(p));
-        let weekEntries;
-        
-        // Handle "overall" case - use all entries from all weeks
-        if (week === "overall") {
-          weekEntries = allEntries;
-        } else {
-          weekEntries = allEntries.filter((r) => {
-            const wn = Number(r.week_number ?? r.weekNumber ?? r.week);
-            return !Number.isNaN(wn) ? wn === weekNum : true;
+          // If the chairperson endpoint payload doesn't include coordinator_id, fallback to full-students list
+          if (!filteredStudents || filteredStudents.length === 0) {
+            try {
+              const studentsResp = await fetch(`${apiBase}/api/v1/users/students/get-all-students`, {
+                headers: authHeaders,
+                credentials: "include",
+              });
+              const studentsPayload = await studentsResp.json().catch(() => ({}));
+              let students = Array.isArray(studentsPayload?.data)
+                ? studentsPayload.data
+                : Array.isArray(studentsPayload?.initial_students)
+                ? studentsPayload.initial_students
+                : Array.isArray(studentsPayload)
+                ? studentsPayload
+                : [];
+              const coordinatorKeyNames = ["coordinator_id", "coordinatorId", "coordinatorID", "coordinator_id_fk"];
+              filteredStudents = students.filter((s) => {
+                let matchesCoordinator = false;
+                for (const key of coordinatorKeyNames) {
+                  if (s && Object.prototype.hasOwnProperty.call(s, key)) {
+                    matchesCoordinator = String(s[key] ?? "") === String(coordinatorId ?? "");
+                    break;
+                  }
+                }
+                if (!matchesCoordinator) {
+                  const c = s.coordinator || s.ojt_coordinator || s.assignedCoordinator;
+                  const cid = c ? (c.id ?? c.coordinator_id) : undefined;
+                  matchesCoordinator = String(cid ?? "") === String(coordinatorId ?? "");
+                }
+                // Also filter by section if sectionId is provided
+                if (matchesCoordinator && sectionId) {
+                  const section_id = s.section_id ?? s.sectionId ?? s.sectionID ?? s.section?.id;
+                  return String(section_id ?? '') === String(sectionId ?? '');
+                }
+                return matchesCoordinator;
+              });
+            } catch {}
+          }
+          const requests = filteredStudents.map((s) => {
+            const sid = s.id ?? s.student_id ?? s.user_id ?? s.application_id;
+            return fetch(`${apiBase}/api/v1/weekly-entries/student/${sid}`, {
+              headers: authHeaders,
+              credentials: "include",
+            }).then((r) => r.json()).catch(() => [])
           });
+          const results = await Promise.all(requests);
+          const normalizeWeekly = (payload) => {
+            if (!payload) return [];
+            if (Array.isArray(payload?.data)) return payload.data;
+            if (Array.isArray(payload?.weekly_entries)) return payload.weekly_entries;
+            if (Array.isArray(payload)) return payload;
+            return [];
+          };
+          const stripHtml = (t) => String(t || "")
+            .replace(/<\s*\/?.*?>/g, ' ')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/&amp;/gi, '&')
+            .replace(/&lt;/gi, '<')
+            .replace(/&gt;/gi, '>')
+            .replace(/\s+/g, ' ')
+            .trim();
+          const weekNum = Number(week || 1);
+          const allEntries = results.flatMap((p) => normalizeWeekly(p));
+          let weekEntries;
+          
+          // Handle "overall" case - use all entries from all weeks
+          if (week === "overall") {
+            weekEntries = allEntries;
+          } else {
+            weekEntries = allEntries.filter((r) => {
+              const wn = Number(r.week_number ?? r.weekNumber ?? r.week);
+              return !Number.isNaN(wn) ? wn === weekNum : true;
+            });
+          }
+          // Don't check for empty students here - wait for backend API response
+          // The backend will handle filtering and return empty results if no students/entries exist
+          // This prevents false "no students" errors when section filtering is working correctly
+          if (weekEntries.length === 0) {
+            // No week entries but students exist
+            setScores(Array.from({ length: 15 }, () => 0));
+            return;
+          }
+          text = weekEntries
+            .map((r) => `${stripHtml(r.tasks || r.task || r.activities || "")} ${stripHtml(r.learnings || r.learning || "")}`)
+            .join(" ")
+            .toLowerCase();
         }
-        // Don't check for empty students here - wait for backend API response
-        // The backend will handle filtering and return empty results if no students/entries exist
-        // This prevents false "no students" errors when section filtering is working correctly
-        if (weekEntries.length === 0) {
-          // No week entries but students exist
-          setScores(Array.from({ length: 15 }, () => 0));
-          return;
-        }
-        const text = weekEntries
-          .map((r) => `${stripHtml(r.tasks || r.task || r.activities || "")} ${stripHtml(r.learnings || r.learning || "")}`)
-          .join(" ");
         
         
         // Reference Keywords/Verbs for PO Matching (Guidance Only)
@@ -194,7 +224,7 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           // PO15: Preserve Filipino historical and cultural heritage
           ["filipino", "culture", "heritage", "values", "historical", "cultural heritage", "tradition", "filipino culture"],
         ];
-        const lower = String(text || "").toLowerCase();
+        const lower = text || ""; // text is already lowercase from backend or fallback
         
         const counts = keywordSets.map((set, index) => {
           let c = 0; 
@@ -578,7 +608,8 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
           
           // Compute scores for the graph ONLY (don't update hit/not-hit lists)
           // CRITICAL: Always pass skipHitLists=true when we have backend data to prevent overwriting
-          await computeScores(true); // Force skipHitLists=true to preserve backend data
+          // OPTIMIZATION: Pass backend data to avoid individual student queries
+          await computeScores(true, data); // Pass backend data to skip N+1 queries
           
           // Extract AI-generated recommendations from backend
           if (data?.recommendations && Array.isArray(data.recommendations) && data.recommendations.length > 0) {

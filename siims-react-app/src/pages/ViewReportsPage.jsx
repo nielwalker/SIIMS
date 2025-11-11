@@ -485,11 +485,30 @@ const ViewReportsPage = ({ authorizeRole }) => {
           setRecommendations([]);
         }
         
-        // Calculate PO scores for graph (use allEntries filtered by week)
-        // Use a ref to prevent infinite loops - only calculate when PO data actually changes
-        const weekEntries = allEntries.filter(e => e.week_number === Number(selectedWeek));
+        // OPTIMIZATION: Use backend data (activities/learnings) for PO score calculation
+        // This avoids re-fetching individual entries when week changes
+        // Backend already queries all data in one go, so use it directly
         if (data?.pos_hit || data?.pos_not_hit) {
-          calculatePOScores(data, weekEntries);
+          // Use activities and learnings from backend response if available
+          // This is much faster than re-fetching entries
+          if (data?.activities && data?.learnings) {
+            // Build text from backend activities/learnings for keyword matching
+            const activities = Array.isArray(data.activities) ? data.activities : [];
+            const learnings = Array.isArray(data.learnings) ? data.learnings : [];
+            const combinedText = [...activities, ...learnings].join(' ').toLowerCase();
+            
+            // Create a mock entries array for calculatePOScores (it only needs text for keyword matching)
+            const mockEntries = [{
+              tasks: activities.join(' '),
+              learnings: learnings.join(' ')
+            }];
+            
+            calculatePOScores(data, mockEntries);
+          } else {
+            // Fallback: Use allEntries if backend data not available
+            const weekEntries = allEntries.filter(e => e.week_number === Number(selectedWeek));
+            calculatePOScores(data, weekEntries);
+          }
         }
 
         if (data?.openai_unavailable) {
@@ -516,15 +535,36 @@ const ViewReportsPage = ({ authorizeRole }) => {
     const fetchTotalHours = async () => {
       if (!selectedStudentId) { setTotalHours(0); return; }
       try {
-        const resp = await fetch(
-          `${import.meta.env.VITE_API_BASE_URL}/api/v1/weekly-entries/student/${selectedStudentId}`,
-          {
-            headers: {
-              Accept: "application/json",
-              Authorization: `Bearer ${JSON.parse(localStorage.getItem("ACCESS_TOKEN"))}`,
-            },
-            credentials: "include",
+        // OPTIMIZATION: Try optimized endpoint first (single query)
+        const apiBase = import.meta.env.VITE_API_BASE_URL;
+        const headers = {
+          Accept: "application/json",
+          Authorization: `Bearer ${JSON.parse(localStorage.getItem("ACCESS_TOKEN"))}`,
+        };
+        
+        try {
+          const qp = new URLSearchParams({ studentId: selectedStudentId });
+          const weeksResp = await fetch(
+            `${apiBase}/api/v1/coordinator/available-weeks?${qp.toString()}`,
+            { headers, credentials: "include" }
+          );
+          
+          if (weeksResp.ok) {
+            const weeksData = await weeksResp.json();
+            // Use total_hours from optimized endpoint if available
+            if (weeksData?.total_hours !== undefined) {
+              setTotalHours(Number(weeksData.total_hours) || 0);
+              return; // Success with optimized endpoint
+            }
           }
+        } catch (err) {
+          // Fall through to original method
+        }
+        
+        // FALLBACK: Original method (fetch all entries)
+        const resp = await fetch(
+          `${apiBase}/api/v1/weekly-entries/student/${selectedStudentId}`,
+          { headers, credentials: "include" }
         );
         const payload = await resp.json().catch(() => []);
         const list = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload) ? payload : [];

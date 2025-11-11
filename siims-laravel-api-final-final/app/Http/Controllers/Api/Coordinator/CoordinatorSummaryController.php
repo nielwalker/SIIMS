@@ -215,6 +215,10 @@ class CoordinatorSummaryController extends Controller
         }
 
         // Merge summary and PO analysis results
+        // Include both corrected and original activities/learnings for frontend optimization
+        $correctedActivities = $poAnalysisResult['corrected_activities'] ?? $activities;
+        $correctedLearnings = $poAnalysisResult['corrected_learnings'] ?? $learnings;
+        
         return response()->json([
             'summary' => $summary,
             'keywordScores' => $keywordScores, // From adapter (word-based text mining)
@@ -226,8 +230,11 @@ class CoordinatorSummaryController extends Controller
             'po_word_hit' => $poAnalysisResult['po_word_hit'] ?? [],
             'po_context_hit' => $poAnalysisResult['po_context_hit'] ?? [],
             'recommendations' => $recommendations, // Use enhanced recommendations
-            'corrected_activities' => $poAnalysisResult['corrected_activities'] ?? $activities,
-            'corrected_learnings' => $poAnalysisResult['corrected_learnings'] ?? $learnings,
+            // Include activities and learnings for frontend optimization (avoids re-fetching)
+            'activities' => $correctedActivities, // Use corrected if available, otherwise original
+            'learnings' => $correctedLearnings,   // Use corrected if available, otherwise original
+            'corrected_activities' => $correctedActivities, // Backward compatibility
+            'corrected_learnings' => $correctedLearnings,   // Backward compatibility
         ], 200, [
             'Access-Control-Allow-Origin' => '*',
             'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
