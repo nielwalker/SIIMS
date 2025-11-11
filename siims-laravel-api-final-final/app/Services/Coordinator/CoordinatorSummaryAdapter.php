@@ -3,7 +3,7 @@
 namespace App\Services\Coordinator;
 
 use App\Services\OpenAI\OpenAIService;
-use App\Services\OpenAI\CoordinatorPromptBuilder;
+use App\Services\Coordinator\CoordinatorSummaryPromptBuilder;
 
 /**
  * Coordinator Summary Adapter
@@ -18,7 +18,7 @@ class CoordinatorSummaryAdapter
 
     public function __construct(
         OpenAIService $openAIService,
-        CoordinatorPromptBuilder $coordinatorPromptBuilder
+        CoordinatorSummaryPromptBuilder $coordinatorPromptBuilder
     ) {
         $this->openAIService = $openAIService;
         $this->coordinatorPromptBuilder = $coordinatorPromptBuilder;
@@ -36,7 +36,8 @@ class CoordinatorSummaryAdapter
      */
     public function analyze(string $text, ?string $analysisType, bool $useGPT = true, ?int $week = null): array
     {
-        $clean = trim(preg_replace('/\s+/', ' ', strip_tags($text)) ?? '');
+        // Use OpenAIService for consistent text cleaning
+        $clean = $this->openAIService->cleanText($text);
         // Use week number if provided, otherwise try to extract from text
         $weekNumber = $week;
         if ($weekNumber === null && preg_match('/^\[WEEK\s+(\d+)\]\s*/i', $clean, $m)) {

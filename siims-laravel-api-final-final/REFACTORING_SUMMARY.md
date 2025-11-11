@@ -12,8 +12,8 @@ This refactoring separates coordinator and chairperson OpenAI-related code for b
 - `app/Services/Coordinator/CoordinatorSummaryService.php` - PO analysis service for coordinator
 
 ### Controllers
-- `app/Http/Controllers/Api/Chairperson/ChairSummaryController.php` - Chairperson summary + PO analysis controller
-- `app/Http/Controllers/Api/Coordinator/SummaryController.php` - Coordinator summary + PO analysis controller
+- `app/Http/Controllers/Api/Chairperson/ChairpersonSummaryController.php` - Chairperson summary + PO analysis controller
+- `app/Http/Controllers/Api/Coordinator/CoordinatorSummaryController.php` - Coordinator summary + PO analysis controller
 
 ### Adapters
 - `app/Services/Chairperson/ChairSummaryAdapter.php` - Chairperson adapter

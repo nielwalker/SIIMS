@@ -201,6 +201,8 @@ class OpenAIService
             return '';
         }
 
+        // Strip HTML tags and normalize whitespace
+        $text = strip_tags($text);
         return trim(
             preg_replace(
                 '/\s+/',

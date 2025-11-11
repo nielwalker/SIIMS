@@ -1,14 +1,14 @@
 <?php
 
-namespace App\Services\OpenAI;
+namespace App\Services\Chairperson;
 
 /**
- * Prompt Builder Service
+ * Chairperson Summary Prompt Builder
  * 
- * Centralized prompt building for different summary types.
- * Consolidates duplicate prompt creation logic.
+ * Centralized prompt building for chairperson summary generation (multiple students).
+ * Moved from App\Services\OpenAI\PromptBuilder
  */
-class PromptBuilder
+class ChairSummaryPromptBuilder
 {
     /**
      * Build summary prompt based on type

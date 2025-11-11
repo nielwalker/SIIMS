@@ -6,10 +6,9 @@
 app/
 ├── Http/Controllers/Api/
 │   ├── Chairperson/
-│   │   └── ChairSummaryController.php ← Chairperson summary + PO analysis
+│   │   └── ChairpersonSummaryController.php ← Chairperson summary + PO analysis
 │   ├── Coordinator/
-│   │   ├── CoordinatorSummaryController.php ← Coordinator PO analysis
-│   │   └── SummaryController.php          ← Coordinator summaries
+│   │   └── CoordinatorSummaryController.php ← Coordinator summary + PO analysis
 │   └── OpenAI/
 │       ├── ChairpersonOpenAISummaryController.php ← OpenAI endpoint for chairperson summaries
 │       └── CoordinatorOpenAISummaryController.php ← OpenAI endpoint for coordinator summaries
@@ -25,8 +24,6 @@ app/
     │   └── CoordinatorSummaryAdapter.php             ← Adapter for coordinator summaries
     └── OpenAI/
         ├── OpenAIService.php          ← Core service: Makes actual API calls to OpenAI
-        ├── PromptBuilder.php          ← Builds prompts for chairperson summaries
-        ├── CoordinatorPromptBuilder.php ← Builds prompts for coordinator summaries
         └── SummaryEvaluationService.php ← Calculates ROUGE & BERT scores
 ```
 
@@ -37,21 +34,21 @@ app/
 ### 1. **Controllers** (`app/Http/Controllers/Api/`)
 **What they do**: Handle HTTP requests from frontend, fetch data from database, call adapters
 
-- **`SummaryController.php`** = Handles coordinator summary requests
+- **`CoordinatorCoordinatorSummaryController.php`** = Handles coordinator summary + PO analysis requests
   - Receives: `studentId`, `week`, `analysisType`, `useGPT`
   - Fetches: Weekly entries from database
   - Does: Word-based keyword matching (text mining)
   - Calls: `SummaryAdapter` for OpenAI summarization
   - Returns: Summary + keyword scores + evaluation metrics
 
-- **`Chairperson/ChairSummaryController.php`** = Handles chairperson summary requests
+- **`Chairperson/ChairpersonCoordinatorSummaryController.php`** = Handles chairperson summary + PO analysis requests
   - Receives: `coordinatorId`, `sectionId`, `week`, `useGPT`
   - Fetches: All students' weekly entries under coordinator
   - Does: Checks cache, extracts activities/learnings
   - Calls: `ChairSummaryAdapter` for summary + PO analysis
   - Returns: Summary + PO analysis + evaluation metrics
 
-- **`Coordinator/CoordinatorSummaryController.php`** = Handles coordinator PO analysis requests
+- **`Coordinator/CoordinatorCoordinatorSummaryController.php`** = Handles coordinator summary + PO analysis requests
   - Receives: `studentId`, `week`, `useGPT`
   - Fetches: Weekly entries for a single student
   - Does: Extracts activities/learnings
@@ -129,8 +126,8 @@ app/
 ### 4. **OpenAI Controllers** (`app/Http/Controllers/Api/OpenAI/`)
 **What they do**: Direct endpoints for OpenAI summarization (legacy/alternative routes)
 
-- **`ChairpersonOpenAISummaryController.php`** = Direct OpenAI endpoint for chairperson
-- **`CoordinatorOpenAISummaryController.php`** = Direct OpenAI endpoint for coordinator
+- **`ChairpersonOpenAICoordinatorSummaryController.php`** = Direct OpenAI endpoint for chairperson
+- **`CoordinatorOpenAICoordinatorSummaryController.php`** = Direct OpenAI endpoint for coordinator
 
 ---
 
@@ -143,7 +140,7 @@ Frontend (React)
     ↓ POST /api/v1/summary
     { studentId: 123, week: 5, useGPT: true, analysisType: "coordinator" }
     ↓
-Coordinator/SummaryController.php
+Coordinator/CoordinatorCoordinatorSummaryController.php
     ↓
     1. Receives request parameters
     2. Queries database: SELECT * FROM weekly_entries WHERE student_id = 123 AND week_number = 5
@@ -168,7 +165,7 @@ SummaryAdapter.php
     1. Cleans and formats summary
     2. Returns: { summary, keywordScores, usedGPT }
     ↓
-SummaryController.php
+CoordinatorSummaryController.php
     ↓
     1. Calls SummaryEvaluationService → calculates ROUGE/BERT scores
     2. Returns JSON response to frontend
@@ -190,7 +187,7 @@ Frontend receives:
 Frontend (React)
     ↓ GET /api/v1/summary/chair?coordinatorId=1&week=5&useGPT=true
     ↓
-Chairperson/ChairSummaryController.php
+Chairperson/ChairCoordinatorSummaryController.php
     ↓
     1. Receives request parameters
     2. Queries database: SELECT * FROM weekly_entries 
@@ -222,7 +219,7 @@ Chairperson/ChairSummaryAdapter.php
     1. Merges summary + PO analysis
     2. Returns complete result
     ↓
-Chairperson/ChairSummaryController.php
+Chairperson/ChairCoordinatorSummaryController.php
     ↓
     1. Saves to cache (po_analysis_cache table)
     2. Calls SummaryEvaluationService → calculates ROUGE/BERT scores

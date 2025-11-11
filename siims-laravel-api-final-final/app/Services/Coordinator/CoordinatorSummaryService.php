@@ -44,7 +44,8 @@ class CoordinatorSummaryService
             return $this->getUnavailableResponse();
         }
 
-        $clean = trim(preg_replace('/\s+/', ' ', strip_tags($text)) ?? '');
+        // Use OpenAIService for consistent text cleaning
+        $clean = $this->openAIService->cleanText($text);
         if (empty($clean)) {
             return $this->getUnavailableResponse();
         }

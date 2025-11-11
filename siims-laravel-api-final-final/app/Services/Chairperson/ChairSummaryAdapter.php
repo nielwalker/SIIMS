@@ -3,7 +3,7 @@
 namespace App\Services\Chairperson;
 
 use App\Services\OpenAI\OpenAIService;
-use App\Services\OpenAI\PromptBuilder;
+use App\Services\Chairperson\ChairSummaryPromptBuilder;
 use App\Services\Chairperson\ChairpersonSummaryService;
 
 class ChairSummaryAdapter
@@ -13,7 +13,7 @@ class ChairSummaryAdapter
 
     public function __construct(
         OpenAIService $openAIService,
-        PromptBuilder $promptBuilder
+        ChairSummaryPromptBuilder $promptBuilder
     ) {
         $this->openAIService = $openAIService;
         $this->promptBuilder = $promptBuilder;
@@ -239,7 +239,8 @@ class ChairSummaryAdapter
 
     public function summarize(string $text, ?int $week, bool $useGPT = false, array $activities = [], array $learnings = []): array
     {
-        $clean = trim(preg_replace('/\s+/', ' ', strip_tags($text)) ?? '');
+        // Use OpenAIService for consistent text cleaning
+        $clean = $this->openAIService->cleanText($text);
         $summary = '';
         $usedGPT = false;
 

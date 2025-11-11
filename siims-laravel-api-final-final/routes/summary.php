@@ -1,8 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\Coordinator\SummaryController;
-use App\Http\Controllers\Api\Chairperson\ChairSummaryController;
+use App\Http\Controllers\Api\Coordinator\CoordinatorSummaryController;
+use App\Http\Controllers\Api\Chairperson\ChairpersonSummaryController;
 use App\Http\Controllers\Api\OpenAI\ChairpersonOpenAISummaryController;
 use App\Http\Controllers\Api\OpenAI\CoordinatorOpenAISummaryController;
 
@@ -13,13 +13,13 @@ Route::prefix('/summary')->group(function () {
     });
 
     // Coordinator-focused and generic summary
-    Route::post('/', [SummaryController::class, 'generate'])->middleware('role:chairperson,coordinator');
-    Route::options('/', [\App\Http\Controllers\Api\Coordinator\SummaryController::class, 'options']);
+    Route::post('/', [CoordinatorSummaryController::class, 'generate'])->middleware('role:chairperson,coordinator');
+    Route::options('/', [CoordinatorSummaryController::class, 'options']);
 
     // Chairperson-specific summary path
-    Route::post('/chair', [ChairSummaryController::class, 'generate'])->middleware('role:chairperson');
-    Route::get('/chair', [ChairSummaryController::class, 'generate'])->middleware('role:chairperson');
-    Route::options('/chair', [\App\Http\Controllers\Api\Coordinator\SummaryController::class, 'options']);
+    Route::post('/chair', [ChairpersonSummaryController::class, 'generate'])->middleware('role:chairperson');
+    Route::get('/chair', [ChairpersonSummaryController::class, 'generate'])->middleware('role:chairperson');
+    Route::options('/chair', [CoordinatorSummaryController::class, 'options']);
     
     // Chairperson OpenAI summarization endpoint
     Route::post('/openai-summarize', [ChairpersonOpenAISummaryController::class, 'summarize'])->middleware('role:chairperson');
@@ -28,7 +28,7 @@ Route::prefix('/summary')->group(function () {
     // Coordinator-specific OpenAI summarization endpoint
     Route::post('/openai-summarize-coordinator', [CoordinatorOpenAISummaryController::class, 'summarize'])->middleware('role:coordinator');
     Route::get('/openai-summarize-coordinator', [CoordinatorOpenAISummaryController::class, 'summarize'])->middleware('role:coordinator');
-    Route::options('/openai-summarize', [\App\Http\Controllers\Api\Coordinator\SummaryController::class, 'options']);
+    Route::options('/openai-summarize', [CoordinatorSummaryController::class, 'options']);
 });
 
 

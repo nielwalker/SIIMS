@@ -8,14 +8,20 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Services\Chairperson\ChairSummaryAdapter;
 use App\Services\OpenAI\SummaryEvaluationService;
+use App\Services\OpenAI\Traits\TextProcessingTrait;
+use App\Services\OpenAI\OpenAIService;
 
-class ChairSummaryController extends Controller
+class ChairpersonSummaryController extends Controller
 {
-    protected $evaluationService;
+    use TextProcessingTrait;
 
-    public function __construct(SummaryEvaluationService $evaluationService)
+    protected $evaluationService;
+    protected $openAIService;
+
+    public function __construct(SummaryEvaluationService $evaluationService, OpenAIService $openAIService)
     {
         $this->evaluationService = $evaluationService;
+        $this->openAIService = $openAIService;
     }
 
     public function generate(Request $request, ChairSummaryAdapter $adapter): JsonResponse
@@ -57,31 +63,9 @@ class ChairSummaryController extends Controller
         }
         
         // Extract activities/tasks and learnings separately for PO analysis
-        $activities = [];
-        $learnings = [];
-        
-        foreach ($rows as $row) {
-            if (!empty($row->tasks)) {
-                $cleanTasks = strip_tags($row->tasks);
-                $cleanTasks = preg_replace('/\s+/', ' ', $cleanTasks);
-                $cleanTasks = trim($cleanTasks);
-                if (!empty($cleanTasks)) {
-                    $activities[] = $cleanTasks;
-                }
-            }
-            if (!empty($row->learnings)) {
-                $cleanLearnings = strip_tags($row->learnings);
-                $cleanLearnings = preg_replace('/\s+/', ' ', $cleanLearnings);
-                $cleanLearnings = trim($cleanLearnings);
-                if (!empty($cleanLearnings)) {
-                    $learnings[] = $cleanLearnings;
-                }
-            }
-        }
-        
-        // Remove duplicates
-        $activities = array_values(array_unique(array_filter($activities)));
-        $learnings = array_values(array_unique(array_filter($learnings)));
+        $extracted = $this->extractActivitiesAndLearnings($rows);
+        $activities = $extracted['activities'];
+        $learnings = $extracted['learnings'];
         
         // Create a hash of the weekly entries data to detect changes
         // This ensures PO analysis is consistent as long as the data hasn't changed
@@ -145,15 +129,10 @@ class ChairSummaryController extends Controller
             \Log::info('ChairSummary: No cache found, generating new PO analysis');
             
             // Combined text for summary generation (can vary)
-            $combined = $rows->map(function ($r) {
-                $t = trim(($r->tasks ?? '') . ' ' . ($r->learnings ?? ''));
-                $t = preg_replace('/\s+/', ' ', $t);
-                if ($t && !preg_match('/[.!?]$/', $t)) { $t .= '.'; }
-                return $t;
-            })->filter()->implode(' ');
+            $combined = $this->buildCombinedText($rows);
 
             // Enforce third-person phrasing before summarization (handles fallback too)
-            $combined = $this->convertToThirdPerson($combined);
+            $combined = $this->convertToThirdPerson($combined, 'the student', 'the students');
 
             \Log::info('ChairSummary: Combined text length: ' . strlen($combined));
             \Log::info('ChairSummary: Activities count: ' . count($activities));
@@ -208,9 +187,9 @@ class ChairSummaryController extends Controller
         }
         // Ensure result summary is also third-person (extra safety for any model variation)
         if (isset($result['summary'])) {
-            $result['summary'] = $this->convertToThirdPerson($result['summary']);
+            $result['summary'] = $this->convertToThirdPerson($result['summary'], 'the student', 'the students');
             if (!empty($week)) {
-                $result['summary'] = $this->enforceWeekPrefix($result['summary']);
+                $result['summary'] = $this->openAIService->enforceWeekPrefix($result['summary'], 'For this week, those students ');
             }
         }
         
@@ -294,7 +273,7 @@ class ChairSummaryController extends Controller
                 ]);
                 
                 // Log evaluation results to console and Laravel log
-                $this->evaluationService->logResults($evaluationResults, 'Chairperson Summary (ChairSummaryController)');
+                $this->evaluationService->logResults($evaluationResults, 'Chairperson Summary (ChairpersonSummaryController)');
                 
                 \Log::info('ChairSummary: Evaluation completed', [
                     'rouge1_f1' => $evaluationResults['rouge1']['f1'] ?? 'N/A',
@@ -341,114 +320,5 @@ class ChairSummaryController extends Controller
         ]);
     }
 
-    private function enforceWeekPrefix(string $text): string
-    {
-        $t = trim($text);
-        if ($t === '') {
-            return '';
-        }
-        if (preg_match('/^For\s+this\s+week,\s+those\s+students/i', $t)) {
-            return $t;
-        }
-        $t = preg_replace('/^(In\s+week\s+\d+\s*,\s*|This\s+week\s*,\s*|In\s+this\s+week\s*,\s*)/i', '', $t);
-        return 'For this week, those students ' . ltrim($t);
-    }
-    
-    private function convertToThirdPerson($text)
-    {
-        if (!is_string($text) || $text === '') return $text;
-
-        $replacements = [
-            // First-person singular contractions and phrases
-            '/\bI\'m\b/i' => 'the student is',
-            '/\bI\'ve\b/i' => 'the student has',
-            '/\bI\'d\b/i' => 'the student would',
-            '/\bI\'ll\b/i' => 'the student will',
-            '/\bI was able to\b/i' => 'the student was able to',
-            '/\bI was\b/i' => 'the student was',
-            '/\bI am\b/i' => 'the student is',
-            '/\bI have\b/i' => 'the student has',
-            '/\bI had\b/i' => 'the student had',
-            '/\bI can\b/i' => 'the student can',
-            '/\bI could\b/i' => 'the student could',
-            '/\bI learned\b/i' => 'the student learned',
-            '/\bI became\b/i' => 'the student became',
-            '/\bI gained\b/i' => 'the student gained',
-            '/\bI developed\b/i' => 'the student developed',
-            '/\bI acquired\b/i' => 'the student acquired',
-            '/\bI improved\b/i' => 'the student improved',
-            '/\bI enhanced\b/i' => 'the student enhanced',
-            '/\bI\b/i' => 'the student',
-            '/\bme\b/i' => 'the student',
-            '/\bmyself\b/i' => 'themselves',
-            '/\bmy\b/i' => 'the student\'s',
-
-            // First-person plural
-            '/\bwe\'re\b/i' => 'the students are',
-            '/\bwe\'ve\b/i' => 'the students have',
-            '/\bwe\'d\b/i' => 'the students would',
-            '/\bwe\'ll\b/i' => 'the students will',
-            '/\bwe were able to\b/i' => 'the students were able to',
-            '/\bwe were\b/i' => 'the students were',
-            '/\bwe are\b/i' => 'the students are',
-            '/\bwe have\b/i' => 'the students have',
-            '/\bwe had\b/i' => 'the students had',
-            '/\bwe can\b/i' => 'the students can',
-            '/\bwe could\b/i' => 'the students could',
-            '/\bwe learned\b/i' => 'the students learned',
-            '/\bwe\b/i' => 'the students',
-            '/\bus\b/i' => 'the students',
-            '/\bour\b/i' => 'the students\'',
-            '/\bours\b/i' => 'the students\'',
-        ];
-
-        foreach ($replacements as $pattern => $replacement) {
-            $text = preg_replace($pattern, $replacement, $text);
-        }
-
-        // Normalize whitespace
-        $text = preg_replace('/\s+/', ' ', trim($text));
-        return $text;
-    }
-    
-    /**
-     * Build reference text from raw database data for evaluation
-     * 
-     * @param array $activities Raw activities from database
-     * @param array $learnings Raw learnings from database
-     * @return string Combined reference text
-     */
-    private function buildReferenceText($activities, $learnings): string
-    {
-        $parts = [];
-        
-        // Ensure activities is an array
-        if (!is_array($activities)) {
-            $activities = is_string($activities) ? [$activities] : [];
-        }
-        
-        // Ensure learnings is an array
-        if (!is_array($learnings)) {
-            $learnings = is_string($learnings) ? [$learnings] : [];
-        }
-        
-        // Add activities
-        if (!empty($activities)) {
-            $activitiesText = array_filter(array_map('trim', $activities));
-            if (!empty($activitiesText)) {
-                $parts[] = 'Activities: ' . implode(' ', $activitiesText);
-            }
-        }
-        
-        // Add learnings
-        if (!empty($learnings)) {
-            $learningsText = array_filter(array_map('trim', $learnings));
-            if (!empty($learningsText)) {
-                $parts[] = 'Learnings: ' . implode(' ', $learningsText);
-            }
-        }
-        
-        return implode(' ', $parts);
-    }
 }
 

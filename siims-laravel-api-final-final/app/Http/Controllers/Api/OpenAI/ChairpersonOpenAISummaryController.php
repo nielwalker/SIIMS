@@ -4,8 +4,9 @@ namespace App\Http\Controllers\Api\OpenAI;
 
 use App\Http\Controllers\Controller;
 use App\Services\OpenAI\OpenAIService;
-use App\Services\OpenAI\PromptBuilder;
+use App\Services\Chairperson\ChairSummaryPromptBuilder;
 use App\Services\OpenAI\SummaryEvaluationService;
+use App\Services\OpenAI\Traits\TextProcessingTrait;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -17,13 +18,15 @@ use Illuminate\Support\Facades\Log;
  */
 class ChairpersonOpenAISummaryController extends Controller
 {
+    use TextProcessingTrait;
+
     protected $openAIService;
     protected $promptBuilder;
     protected $evaluationService;
 
     public function __construct(
         OpenAIService $openAIService,
-        PromptBuilder $promptBuilder,
+        ChairSummaryPromptBuilder $promptBuilder,
         SummaryEvaluationService $evaluationService
     ) {
         $this->openAIService = $openAIService;
@@ -177,35 +180,5 @@ class ChairpersonOpenAISummaryController extends Controller
         }
     }
     
-    /**
-     * Build reference text from raw database data
-     * This is the "ground truth" text that we compare the OpenAI summary against
-     * 
-     * @param array $activities Raw activities from database
-     * @param array $learnings Raw learnings from database
-     * @param string $assessment Assessment text (if any)
-     * @return string Combined reference text
-     */
-    private function buildReferenceText(array $activities, array $learnings, string $assessment): string
-    {
-        $parts = [];
-        
-        // Add activities
-        if (!empty($activities)) {
-            $parts[] = 'Activities: ' . implode(' ', $activities);
-        }
-        
-        // Add learnings
-        if (!empty($learnings)) {
-            $parts[] = 'Learnings: ' . implode(' ', $learnings);
-        }
-        
-        // Add assessment if provided
-        if (!empty($assessment)) {
-            $parts[] = 'Assessment: ' . $assessment;
-        }
-        
-        return implode(' ', $parts);
-    }
 }
 

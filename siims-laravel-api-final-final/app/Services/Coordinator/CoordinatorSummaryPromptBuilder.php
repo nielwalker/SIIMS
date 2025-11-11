@@ -1,13 +1,14 @@
 <?php
 
-namespace App\Services\OpenAI;
+namespace App\Services\Coordinator;
 
 /**
- * Coordinator Prompt Builder Service
+ * Coordinator Summary Prompt Builder
  * 
- * Builds prompts specifically for coordinator summaries with PO analysis.
+ * Builds prompts for coordinator summary generation (single student).
+ * Moved from App\Services\OpenAI\CoordinatorPromptBuilder
  */
-class CoordinatorPromptBuilder
+class CoordinatorSummaryPromptBuilder
 {
     /**
      * PO word mapping for keyword detection
