@@ -156,8 +156,10 @@ export default function ChairpersonDashboardPage() {
               if (weeks.length > 0 && !weeks.includes(Number(selectedWeek))) {
                 setSelectedWeek(weeks[0]);
               }
-              // Auto-select section if only one
+              // Auto-select section if only one, or auto-select first section if multiple
               if (sections.length === 1 && !selectedSectionId) {
+                setSelectedSectionId(sections[0].id);
+              } else if (sections.length > 1 && !selectedSectionId) {
                 setSelectedSectionId(sections[0].id);
               }
             }
@@ -175,8 +177,14 @@ export default function ChairpersonDashboardPage() {
           const allSecs = Array.isArray(ps?.data) ? ps.data : (Array.isArray(ps) ? ps : []);
           const secs = allSecs.filter((s) => String(s.coordinator_id ?? s.coordinatorId) === String(selectedCoordinatorId));
           if (!cancelled) {
-            setCoordinatorSections(secs.map((s) => ({ id: s.id, name: s.name })));
-            setSelectedSectionId("");
+            const sectionsList = secs.map((s) => ({ id: s.id, name: s.name }));
+            setCoordinatorSections(sectionsList);
+            // Auto-select first section if available
+            if (sectionsList.length > 0 && !selectedSectionId) {
+              setSelectedSectionId(sectionsList[0].id);
+            } else if (sectionsList.length === 0) {
+              setSelectedSectionId("");
+            }
           }
         } catch (_) {
           if (!cancelled) { setCoordinatorSections([]); setSelectedSectionId(""); }
@@ -368,14 +376,13 @@ export default function ChairpersonDashboardPage() {
                 <div className="flex items-center gap-2">
                   <label className="text-sm font-semibold text-gray-700">Section:</label>
                   <select
-                    value={selectedSectionId}
+                    value={selectedSectionId || coordinatorSections[0]?.id || ""}
                     onChange={(e) => {
                       setSelectedSectionId(e.target.value);
                       setRefreshTrigger(prev => prev + 1);
                     }}
                     className="px-3 py-2 border rounded text-gray-900 bg-white"
                   >
-                    <option value="">Select Section</option>
                     {coordinatorSections.map((sec) => (
                       <option key={sec.id} value={sec.id}>{sec.name}</option>
                     ))}
