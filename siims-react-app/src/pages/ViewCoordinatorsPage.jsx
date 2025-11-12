@@ -974,7 +974,7 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
                             : `Coordinator ${coord.id}`);
                         return (
                           <option key={String(coord.id)} value={String(coord.id)}>
-                            {displayName} ({coord.id})
+                            {displayName}
                           </option>
                         );
                       })}
@@ -1409,7 +1409,7 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
                             : `Coordinator ${coord.id}`);
                         return (
                           <option key={String(coord.id)} value={String(coord.id)}>
-                            {displayName} ({coord.id})
+                            {displayName}
                           </option>
                         );
                       })}

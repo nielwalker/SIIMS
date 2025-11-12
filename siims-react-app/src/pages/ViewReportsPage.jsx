@@ -8,8 +8,28 @@ import Text from "../components/common/Text";
 import DynamicDataGrid from "../components/tables/DynamicDataGrid";
 
 const ViewReportsPage = ({ authorizeRole }) => {
+  // PO Descriptions
+  const PO_DESCRIPTIONS = useMemo(() => ([
+    "Apply knowledge of computing, science, and mathematics in solving computing/IT-related problems through critical and creative thinking.",
+    "Use current best practices and standards in solving complex computing/IT-related problems and requirements.",
+    "Analyze complex computing/IT-related problems by applying analytical and quantitative reasoning, and define the computing requirements appropriate to its solution.",
+    "Identify and analyze user needs and take them into account in the selection, creation, evaluation, and administration of computer-based systems.",
+    "Design creatively, implement, and evaluate different computer-based systems, processes, components, or programs to meet desired needs and requirements under various constraints.",
+    "Integrate effectively the IT-based solutions into the user environment with appropriate consideration for public health and safety, cultural, societal, and environmental concerns.",
+    "Select, adapt, and apply appropriate techniques, resources, skills, and modern computing tools to complex computing activities, with an understanding of the limitations.",
+    "Function effectively as an individual, or work collaboratively and respectfully as a member or leader in diverse development teams and in multidisciplinary and/or multicultural settings.",
+    "Assist in the creation of an effective IT project plan.",
+    "Communicate effectively in both oral and written form by being able to deliver and comprehend instructions clearly; and present persuasively to diverse audiences the complex computing/IT-related ideas and perspectives.",
+    "Assess local and global impact of computing and information technology on individuals, organizations, and society.",
+    "Act in recognition of professional, ethical, legal, security, and social responsibilities in the utilization of information technology.",
+    "Recognize the need to engage in independent learning and stay updated with the latest developments in specialized IT fields such as Database Management and Information Systems, Network Design and Administration, and Computer Vision and Image Processing for continual professional development.",
+    "Participate in the generation of new knowledge or in research and development projects aligned with local and national development agendas or goals, contributing to the local and national economy.",
+    "Preserve and promote Filipino historical and cultural heritage.",
+  ]), []);
+
   // Student options for coordinator
   const [students, setStudents] = useState([]);
+  const [allStudents, setAllStudents] = useState([]); // Store all students before filtering
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [selectedStudentCompany, setSelectedStudentCompany] = useState("");
   const [availableWeeks, setAvailableWeeks] = useState([]);
@@ -18,6 +38,10 @@ const ViewReportsPage = ({ authorizeRole }) => {
   const [studentSummary, setStudentSummary] = useState("");
   // Coordinator view: recommendations hidden (chairperson only)
   const [totalHours, setTotalHours] = useState(0);
+  
+  // Section filter state
+  const [sections, setSections] = useState([]);
+  const [selectedSectionId, setSelectedSectionId] = useState("");
   
   // PO Analysis state
   const [poAnalysisLoading, setPoAnalysisLoading] = useState(false);
@@ -107,8 +131,10 @@ const ViewReportsPage = ({ authorizeRole }) => {
           const last = s.last_name || s.lastName || "";
           const name = [first, last].filter(Boolean).join(" ") || s.name || s.fullName || id;
           const company = s.company?.name || s.company_name || s.companyName || s.latest_application_company_name || "—";
-          return { id, name, company };
+          const sectionId = s.section_id ?? s.sectionId ?? s.section?.id ?? null;
+          return { id, name, company, sectionId };
         });
+        setAllStudents(opts);
         setStudents(opts);
       } catch (e) {
         setStudents([]);
@@ -120,6 +146,56 @@ const ViewReportsPage = ({ authorizeRole }) => {
       cancel = true;
     };
   }, []);
+
+  // Fetch sections assigned to coordinator
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const user = JSON.parse(localStorage.getItem("USER") || "{}");
+        const coordinatorId = user?.id || "";
+        if (!coordinatorId) return;
+        
+        const resp = await fetch(
+          `${import.meta.env.VITE_API_BASE_URL}/api/v1/sections?coordinator_id=${coordinatorId}`,
+          {
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${JSON.parse(localStorage.getItem("ACCESS_TOKEN"))}`,
+            },
+            credentials: "include",
+          }
+        );
+        const data = await resp.json().catch(() => []);
+        if (cancel) return;
+        const list = Array.isArray(data?.data)
+          ? data.data
+          : Array.isArray(data)
+          ? data
+          : [];
+        setSections(list);
+      } catch (e) {
+        setSections([]);
+      }
+    })();
+    return () => {
+      cancel = true;
+    };
+  }, []);
+
+  // Filter students by selected section
+  useEffect(() => {
+    if (!selectedSectionId) {
+      setStudents(allStudents);
+    } else {
+      const filtered = allStudents.filter((s) => String(s.sectionId) === String(selectedSectionId));
+      setStudents(filtered);
+      // Clear selected student if it's not in the filtered list
+      if (selectedStudentId && !filtered.find((s) => String(s.id) === String(selectedStudentId))) {
+        setSelectedStudentId("");
+      }
+    }
+  }, [selectedSectionId, allStudents, selectedStudentId]);
 
   // Track selected student's company name
   useEffect(() => {
@@ -642,6 +718,25 @@ const ViewReportsPage = ({ authorizeRole }) => {
 
       <div className="mt-3">
         <div className="flex flex-wrap items-center gap-4 bg-gray-50 border rounded px-4 py-3 mb-4">
+          {/* Section Filter - Only show if coordinator has multiple sections */}
+          {sections.length > 1 && (
+            <>
+              <label className="text-sm font-semibold text-gray-700">Section:</label>
+              <select
+                className="px-3 py-2 border rounded text-gray-900 bg-white"
+                value={selectedSectionId}
+                onChange={(e) => setSelectedSectionId(e.target.value)}
+              >
+                <option value="">All Sections</option>
+                {sections.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {section.name || `Section ${section.id}`}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+
           <label className="text-sm font-semibold text-gray-700">Student:</label>
           <select
             className="px-3 py-2 border rounded text-gray-900 bg-white"
@@ -885,6 +980,53 @@ const ViewReportsPage = ({ authorizeRole }) => {
                         </div>
                       );
                     })()}
+                  </div>
+                </div>
+              )}
+
+              {/* Program Outcome Details Table */}
+              {!poAnalysisLoading && !poError && (
+                <div className="mt-6 bg-white border rounded-lg shadow-sm">
+                  <div className="px-4 py-3 border-b bg-blue-50 rounded-t-lg">
+                    <h5 className="text-lg font-semibold text-gray-800">Program Outcome Details</h5>
+                  </div>
+                  <div className="p-0">
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                              PO Code
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                              Program Outcome
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                              Status
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {poScores.map((v, i) => (
+                            <tr key={i} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${v > 0 ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-800'}`}>
+                                  PO{i + 1}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <p className="text-sm text-gray-600">{PO_DESCRIPTIONS[i] || ''}</p>
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-sm font-medium ${v > 0 ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                  {v > 0 ? '✓ Achieved' : '✗ Not Met'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
