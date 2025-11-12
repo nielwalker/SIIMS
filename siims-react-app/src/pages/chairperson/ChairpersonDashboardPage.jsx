@@ -375,7 +375,7 @@ export default function ChairpersonDashboardPage() {
                     }}
                     className="px-3 py-2 border rounded text-gray-900 bg-white"
                   >
-                    <option value="">All Sections</option>
+                    <option value="">Select Section</option>
                     {coordinatorSections.map((sec) => (
                       <option key={sec.id} value={sec.id}>{sec.name}</option>
                     ))}
