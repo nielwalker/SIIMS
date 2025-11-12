@@ -14,7 +14,21 @@ const StudentWeeklyAccomplishmentPage = () => {
   // console.log(applicationId);
   // console.log(initial_weekly_reports);
 
-  const [weeklyReports, setWeeklyReports] = useState(initial_weekly_reports);
+  // Sort initial reports by newest first (created_at or id descending)
+  const sortedInitialReports = Array.isArray(initial_weekly_reports) 
+    ? [...initial_weekly_reports].sort((a, b) => {
+        const aDate = a.created_at || a.createdAt || '';
+        const bDate = b.created_at || b.createdAt || '';
+        if (aDate && bDate) {
+          return new Date(bDate) - new Date(aDate);
+        }
+        // Fallback to id if created_at not available
+        const aId = a.id || 0;
+        const bId = b.id || 0;
+        return bId - aId;
+      })
+    : [];
+  const [weeklyReports, setWeeklyReports] = useState(sortedInitialReports);
   const [currentWeek, setCurrentWeek] = useState({
     week_number: "",
     start_date: "",
@@ -45,8 +59,22 @@ const StudentWeeklyAccomplishmentPage = () => {
 
   // Filter reports based on selected week
   // Only show reports if a week is selected, otherwise show empty array
+  // Sort by newest first (by created_at or id descending)
   const filteredReports = filterWeek 
-    ? weeklyReports.filter(report => String(report.week_number) === String(filterWeek))
+    ? weeklyReports
+        .filter(report => String(report.week_number) === String(filterWeek))
+        .sort((a, b) => {
+          // Sort by created_at descending (newest first), fallback to id
+          const aDate = a.created_at || a.createdAt || '';
+          const bDate = b.created_at || b.createdAt || '';
+          if (aDate && bDate) {
+            return new Date(bDate) - new Date(aDate);
+          }
+          // Fallback to id if created_at not available
+          const aId = a.id || 0;
+          const bId = b.id || 0;
+          return bId - aId;
+        })
     : [];
 
   // Generate available weeks (1-13 for internship, or based on existing reports)
@@ -164,15 +192,28 @@ const StudentWeeklyAccomplishmentPage = () => {
             const reportsResponse = await axiosClient.get(`/api/v1/weekly-accomplishment-reports/${applicationId}`);
             if (reportsResponse?.data?.data) {
               const reports = Array.isArray(reportsResponse.data.data) ? reportsResponse.data.data : [];
-              setWeeklyReports(reports);
+              // Sort reports by newest first (created_at or id descending)
+              const sortedReports = reports.sort((a, b) => {
+                const aDate = a.created_at || a.createdAt || '';
+                const bDate = b.created_at || b.createdAt || '';
+                if (aDate && bDate) {
+                  return new Date(bDate) - new Date(aDate);
+                }
+                // Fallback to id if created_at not available
+                const aId = a.id || 0;
+                const bId = b.id || 0;
+                return bId - aId;
+              });
+              setWeeklyReports(sortedReports);
               // Recalculate total hours
-              const totalHours = reports.reduce((sum, report) => sum + parseInt(report.hours || 0, 10), 0);
+              const totalHours = sortedReports.reduce((sum, report) => sum + parseInt(report.hours || 0, 10), 0);
               setNo_of_hours(totalHours);
             }
           } catch (err) {
             console.error('Error refreshing weekly reports:', err);
-            // Fallback: add to local state if refresh fails
-            setWeeklyReports([...weeklyReports, currentWeek]);
+            // Fallback: add to local state if refresh fails (newest first)
+            const newReports = [currentWeek, ...weeklyReports];
+            setWeeklyReports(newReports);
             setNo_of_hours((prevNoOfHours) => prevNoOfHours + parsedHours);
           }
           
@@ -339,8 +380,20 @@ const StudentWeeklyAccomplishmentPage = () => {
         const reportsResponse = await axiosClient.get(`/api/v1/weekly-accomplishment-reports/${applicationId}`);
         if (reportsResponse?.data?.data) {
           const reports = Array.isArray(reportsResponse.data.data) ? reportsResponse.data.data : [];
-          setWeeklyReports(reports);
-          const totalHours = reports.reduce((sum, report) => sum + parseInt(report.hours || 0, 10), 0);
+          // Sort reports by newest first (created_at or id descending)
+          const sortedReports = reports.sort((a, b) => {
+            const aDate = a.created_at || a.createdAt || '';
+            const bDate = b.created_at || b.createdAt || '';
+            if (aDate && bDate) {
+              return new Date(bDate) - new Date(aDate);
+            }
+            // Fallback to id if created_at not available
+            const aId = a.id || 0;
+            const bId = b.id || 0;
+            return bId - aId;
+          });
+          setWeeklyReports(sortedReports);
+          const totalHours = sortedReports.reduce((sum, report) => sum + parseInt(report.hours || 0, 10), 0);
           setNo_of_hours(totalHours);
         }
       }
