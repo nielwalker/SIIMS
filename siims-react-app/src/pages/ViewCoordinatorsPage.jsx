@@ -818,23 +818,6 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
 
   // AI Insight feature removed
 
-  // Export analytics section to PDF
-  const handleDownloadAnalyticsPDF = () => {
-    try {
-      if (!analyticsRef.current) return;
-      const html = `<!doctype html><html><head><meta charset="utf-8"/><title>Coordinator Analytics</title>
-      <style>@page{size:A4;margin:16mm}body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#111827}
-      h2{margin:0 0 8px}.header{margin-bottom:12px;border-bottom:1px solid #e5e7eb;padding-bottom:6px}
-      table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #e5e7eb;padding:8px;text-align:left}
-      .bar{height:10px;background:#e5e7eb;position:relative}.fill{height:10px;background:#16a34a}
-      </style><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),150));window.onafterprint=()=>window.close();</script></head>
-      <body><div class="header"><h2>Coordinator Analytics</h2></div>${analyticsRef.current.innerHTML}</body></html>`;
-      const blob = new Blob([html], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener');
-      setTimeout(()=>{ try { URL.revokeObjectURL(url); } catch(e){} }, 10000);
-    } catch(_) {}
-  };
 
   // ! Only Display this if the User is Admin
   if (authorizeRole === "admin") {
@@ -1280,7 +1263,6 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
               <div className="flex gap-2">
                 <button onClick={loadAnalytics} className="px-3 py-2 bg-slate-700 text-white rounded hover:bg-slate-800">{analyticsLoading ? 'Loading…' : 'Load Analytics'}</button>
                 {/* AI Insight feature removed */}
-                <button onClick={handleDownloadAnalyticsPDF} disabled={coordinatorAnalytics.length === 0} className="px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 disabled:opacity-50">Download PDF</button>
               </div>
             </div>
             {coordinatorAnalytics.length > 0 ? (
