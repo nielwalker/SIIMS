@@ -1136,14 +1136,13 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
                                       e.target.style.boxShadow = 'none';
                                     }}
                                   >
-                                    {/* Nested contribution bar (red outlined rectangle) */}
+                                    {/* Nested contribution bar (red filled bar) */}
                                     {v > 0 && nestedContrib > 0 && (
                                       <div
                                         className="position-absolute bottom-0 start-0 w-100"
                                         style={{
                                           height: `${(nestedHeight / height) * 100}%`,
-                                          border: '2px solid #dc3545',
-                                          backgroundColor: 'rgba(220, 53, 69, 0.2)',
+                                          backgroundColor: '#dc3545',
                                           boxSizing: 'border-box',
                                           borderRadius: '2px 2px 0 0'
                                         }}

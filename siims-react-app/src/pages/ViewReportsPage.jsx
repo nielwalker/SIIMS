@@ -836,15 +836,13 @@ const ViewReportsPage = ({ authorizeRole }) => {
                                           e.target.style.boxShadow = 'none';
                                         }}
                                       >
-                                        {/* Nested contribution bar - Red outline showing word-based contribution (40% weight) */}
+                                        {/* Nested contribution bar - Red filled bar showing word-based contribution (40% weight) */}
                                         {v > 0 && wordContrib > 0 && nestedHeight > 0 && (
                                           <div
                                             className="absolute bottom-0 left-0 w-full"
                                             style={{
                                               height: `${Math.min(100, Math.max(5, (nestedHeight / height) * 100))}%`,
-                                              border: '2px solid #dc2626',
-                                              borderBottom: 'none',
-                                              backgroundColor: 'rgba(220, 38, 38, 0.25)',
+                                              backgroundColor: '#dc2626',
                                               boxSizing: 'border-box',
                                               borderRadius: '2px 2px 0 0',
                                               zIndex: 5,

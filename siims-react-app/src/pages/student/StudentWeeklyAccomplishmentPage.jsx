@@ -586,11 +586,14 @@ const StudentWeeklyAccomplishmentPage = () => {
                     className="border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 px-4 py-2"
                   >
                     <option value="">Select Week</option>
-                    {Object.keys(groupedReports).sort((a, b) => Number(a) - Number(b)).map((week) => (
-                      <option key={week} value={week}>
-                        Week {week}
-                      </option>
-                    ))}
+                    {Object.keys(groupedReports)
+                      .filter(week => week !== "overall" && week !== "Overall" && week !== "OVERALL" && !isNaN(Number(week)))
+                      .sort((a, b) => Number(a) - Number(b))
+                      .map((week) => (
+                        <option key={week} value={week}>
+                          Week {week}
+                        </option>
+                      ))}
                   </select>
                 </div>
                 <div>
@@ -603,11 +606,14 @@ const StudentWeeklyAccomplishmentPage = () => {
                     className="border-gray-300 rounded-md shadow-sm focus:ring-orange-500 focus:border-orange-500 px-4 py-2"
                   >
                     <option value="">Select Week</option>
-                    {Object.keys(groupedReports).sort((a, b) => Number(a) - Number(b)).map((week) => (
-                      <option key={week} value={week}>
-                        Week {week}
-                      </option>
-                    ))}
+                    {Object.keys(groupedReports)
+                      .filter(week => week !== "overall" && week !== "Overall" && week !== "OVERALL" && !isNaN(Number(week)))
+                      .sort((a, b) => Number(a) - Number(b))
+                      .map((week) => (
+                        <option key={week} value={week}>
+                          Week {week}
+                        </option>
+                      ))}
                   </select>
                 </div>
                 <div className="self-end">
