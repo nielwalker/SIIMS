@@ -90,11 +90,29 @@ const SectionForm = ({
               required={requiredFields["coordinator_id"]}
             >
               <option value="">- Select Coordinator -</option>
-              {Array.isArray(coordinators) && coordinators.map((c) => (
-                <option key={String(c.id)} value={String(c.id)}>
-                  {c.name || `${c.first_name ?? ''} ${c.last_name ?? ''}`.trim() || String(c.id)}
-                </option>
-              ))}
+              {Array.isArray(coordinators) && coordinators.map((c) => {
+                const coordinatorId = String(c.id ?? c.user_id ?? c.coordinator_id ?? '');
+                // Extract coordinator name - prioritize name field, then construct from parts
+                let coordinatorName = '';
+                if (c.name && c.name.trim() && c.name !== coordinatorId) {
+                  coordinatorName = c.name.trim();
+                } else if (c.first_name || c.last_name) {
+                  coordinatorName = `${c.first_name || ''} ${c.middle_name || ''} ${c.last_name || ''}`.trim();
+                } else if (c.firstName || c.lastName) {
+                  coordinatorName = `${c.firstName || ''} ${c.middleName || ''} ${c.lastName || ''}`.trim();
+                } else if (c.user?.first_name || c.user?.last_name) {
+                  coordinatorName = `${c.user.first_name || ''} ${c.user.middle_name || ''} ${c.user.last_name || ''}`.trim();
+                }
+                // Only use default if truly no name found
+                if (!coordinatorName) {
+                  coordinatorName = 'Unknown Coordinator';
+                }
+                return (
+                  <option key={coordinatorId} value={coordinatorId}>
+                    {coordinatorId} - {coordinatorName}
+                  </option>
+                );
+              })}
             </select>
             {errors.coordinator_id && (
               <Text className="text-red-500">{errors.coordinator_id[0]}</Text>

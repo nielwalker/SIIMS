@@ -150,9 +150,19 @@ export default function ChairpersonDashboardPage() {
             const weeks = Array.isArray(data?.weeks) ? data.weeks : [];
             const sections = Array.isArray(data?.sections) ? data.sections : [];
             
+            // Remove coordinator name from section names (e.g., "4R11-Ethan" -> "4R11")
+            const cleanedSections = sections.map((s) => {
+              if (!s.name) return s;
+              const parts = s.name.split('-');
+              // If there's more than one part, remove the last part (coordinator name)
+              // Otherwise, keep the original name
+              const cleanedName = parts.length > 1 ? parts.slice(0, -1).join('-').trim() : s.name;
+              return { ...s, name: cleanedName || s.name };
+            });
+            
             if (!cancelled) {
               setAvailableWeeks(weeks);
-              setCoordinatorSections(sections);
+              setCoordinatorSections(cleanedSections);
               if (weeks.length > 0 && !weeks.includes(Number(selectedWeek))) {
                 setSelectedWeek(weeks[0]);
               }
@@ -177,7 +187,15 @@ export default function ChairpersonDashboardPage() {
           const allSecs = Array.isArray(ps?.data) ? ps.data : (Array.isArray(ps) ? ps : []);
           const secs = allSecs.filter((s) => String(s.coordinator_id ?? s.coordinatorId) === String(selectedCoordinatorId));
           if (!cancelled) {
-            const sectionsList = secs.map((s) => ({ id: s.id, name: s.name }));
+            // Remove coordinator name from section names (e.g., "4R11-Ethan" -> "4R11")
+            const sectionsList = secs.map((s) => {
+              if (!s.name) return { id: s.id, name: s.name || '' };
+              const parts = s.name.split('-');
+              // If there's more than one part, remove the last part (coordinator name)
+              // Otherwise, keep the original name
+              const cleanedName = parts.length > 1 ? parts.slice(0, -1).join('-').trim() : s.name;
+              return { id: s.id, name: cleanedName || s.name };
+            });
             setCoordinatorSections(sectionsList);
             // Auto-select first section if available
             if (sectionsList.length > 0 && !selectedSectionId) {

@@ -335,12 +335,40 @@ const SectionContainer = ({ authorizeRole }) => {
       });
       const payload = await resp.json().catch(() => []);
       const list = Array.isArray(payload?.data) ? payload.data : (Array.isArray(payload) ? payload : []);
-      const normalized = list.map((c) => ({
-        id: c.id ?? c.user_id ?? c.coordinator_id,
-        name: [c.first_name || c.firstName, c.last_name || c.lastName].filter(Boolean).join(' ') || c.name || c.fullName || String(c.id)
-      })).filter((c) => c.id != null);
+      
+      console.log('SectionContainer: Fetched coordinators:', list);
+      
+      const normalized = list.map((c) => {
+        const id = String(c.id ?? c.user_id ?? c.coordinator_id ?? '');
+        // Try to get name from API response - prioritize name field, then construct from parts
+        const apiName = c.name ?? c.fullName ?? '';
+        const first = c.first_name ?? c.firstName ?? c.user?.first_name ?? '';
+        const middle = c.middle_name ?? c.middleName ?? c.user?.middle_name ?? '';
+        const last = c.last_name ?? c.lastName ?? c.user?.last_name ?? '';
+        
+        // Build display name: prefer API name, then construct from parts
+        let displayName = '';
+        if (apiName && apiName.trim()) {
+          displayName = apiName.trim();
+        } else if (first || last) {
+          displayName = `${first} ${middle} ${last}`.trim();
+        }
+        
+        console.log(`SectionContainer: Coordinator ${id}: apiName="${apiName}", displayName="${displayName}"`);
+        
+        return {
+          id: id,
+          name: displayName, // Set name field (may be empty)
+          first_name: first || undefined,
+          middle_name: middle || undefined,
+          last_name: last || undefined,
+        };
+      }).filter((c) => c.id != null);
+      
+      console.log('SectionContainer: Normalized coordinators:', normalized);
       setCoordinators(normalized);
-    } catch (_) {
+    } catch (error) {
+      console.error('SectionContainer: Error fetching coordinators:', error);
       setCoordinators([]);
     }
   };

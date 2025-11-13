@@ -464,24 +464,86 @@ class SummaryEvaluationService
         // Expanded synonym dictionary for better semantic matching
         // This improves BERT score by recognizing semantically similar words
         $synonymDict = [
-            'learn' => ['study', 'understand', 'acquire', 'gain', 'obtain', 'grasp', 'master', 'comprehend'],
-            'work' => ['task', 'job', 'assignment', 'project', 'activity', 'duty', 'responsibility'],
-            'create' => ['build', 'develop', 'make', 'design', 'construct', 'produce', 'generate'],
-            'improve' => ['enhance', 'better', 'upgrade', 'refine', 'optimize', 'advance', 'progress'],
-            'analyze' => ['examine', 'study', 'review', 'evaluate', 'assess', 'investigate', 'inspect'],
-            'implement' => ['execute', 'apply', 'carry', 'perform', 'do', 'accomplish', 'complete'],
-            'develop' => ['create', 'build', 'design', 'construct', 'make', 'form', 'establish'],
-            'test' => ['check', 'verify', 'validate', 'examine', 'evaluate', 'assess', 'inspect'],
-            'fix' => ['repair', 'correct', 'resolve', 'solve', 'debug', 'troubleshoot', 'address'],
-            'use' => ['utilize', 'employ', 'apply', 'operate', 'handle', 'work with'],
-            'participate' => ['join', 'attend', 'engage', 'involve', 'take part', 'contribute'],
-            'discuss' => ['talk', 'converse', 'communicate', 'exchange', 'share', 'debate'],
-            'understand' => ['comprehend', 'grasp', 'know', 'realize', 'recognize', 'appreciate'],
-            'complete' => ['finish', 'accomplish', 'achieve', 'fulfill', 'conclude', 'finalize'],
-            'attend' => ['participate', 'join', 'be present', 'go to', 'take part'],
-            'practice' => ['exercise', 'train', 'rehearse', 'drill', 'apply', 'perform'],
-            'help' => ['assist', 'support', 'aid', 'facilitate', 'contribute'],
-            'collaborate' => ['cooperate', 'work together', 'team up', 'partner'],
+            'learn' => [
+                'study', 'understand', 'acquire', 'gain', 'obtain', 'grasp', 'master', 'comprehend',
+                'absorb', 'discover', 'explore', 'familiarize', 'observe', 'learning', 'education'
+            ],
+            'work' => [
+                'task', 'job', 'assignment', 'project', 'activity', 'duty', 'responsibility',
+                'operation', 'effort', 'labor', 'performance', 'workflow', 'process'
+            ],
+            'create' => [
+                'build', 'develop', 'make', 'design', 'construct', 'produce', 'generate',
+                'craft', 'form', 'compose', 'innovate', 'invent', 'prototype', 'establish'
+            ],
+            'improve' => [
+                'enhance', 'better', 'upgrade', 'refine', 'optimize', 'advance', 'progress',
+                'boost', 'increase', 'strengthen', 'expand', 'grow', 'develop further'
+            ],
+            'analyze' => [
+                'examine', 'study', 'review', 'evaluate', 'assess', 'investigate', 'inspect',
+                'interpret', 'observe', 'compare', 'test', 'scrutinize', 'break down'
+            ],
+            'implement' => [
+                'execute', 'apply', 'carry out', 'perform', 'do', 'accomplish', 'complete',
+                'deploy', 'realize', 'put into action', 'enforce'
+            ],
+            'develop' => [
+                'create', 'build', 'design', 'construct', 'make', 'form', 'establish',
+                'grow', 'expand', 'enhance', 'progress', 'advance', 'refine', 'improve'
+            ],
+            'test' => [
+                'check', 'verify', 'validate', 'examine', 'evaluate', 'assess', 'inspect',
+                'try', 'experiment', 'confirm', 'debug', 'review', 'analyze'
+            ],
+            'fix' => [
+                'repair', 'correct', 'resolve', 'solve', 'debug', 'troubleshoot', 'address',
+                'amend', 'adjust', 'patch', 'restore', 'remedy'
+            ],
+            'use' => [
+                'utilize', 'employ', 'apply', 'operate', 'handle', 'work with', 'run',
+                'access', 'leverage', 'execute', 'implement', 'make use of'
+            ],
+            'participate' => [
+                'join', 'attend', 'engage', 'involve', 'take part', 'contribute',
+                'collaborate', 'work together', 'be part of', 'cooperate'
+            ],
+            'discuss' => [
+                'talk', 'converse', 'communicate', 'exchange', 'share', 'debate',
+                'present', 'consult', 'deliberate', 'conference', 'conversation'
+            ],
+            'understand' => [
+                'comprehend', 'grasp', 'know', 'realize', 'recognize', 'appreciate',
+                'acknowledge', 'interpret', 'perceive', 'be aware of'
+            ],
+            'complete' => [
+                'finish', 'accomplish', 'achieve', 'fulfill', 'conclude', 'finalize',
+                'end', 'wrap up', 'close', 'deliver', 'execute successfully'
+            ],
+            'attend' => [
+                'participate', 'join', 'be present', 'go to', 'take part', 'show up',
+                'visit', 'participation', 'presence'
+            ],
+            'practice' => [
+                'exercise', 'train', 'rehearse', 'drill', 'apply', 'perform',
+                'repeat', 'simulate', 'experiment', 'routine', 'training'
+            ],
+            'help' => [
+                'assist', 'support', 'aid', 'facilitate', 'contribute', 'guide',
+                'mentor', 'cooperate', 'volunteer', 'lend a hand'
+            ],
+            'collaborate' => [
+                'cooperate', 'work together', 'team up', 'partner', 'coordinate',
+                'combine', 'unite', 'assist', 'joint effort', 'group work'
+            ],
+            'plan' => [
+                'organize', 'schedule', 'prepare', 'arrange', 'design', 'strategize',
+                'outline', 'map out', 'structure', 'coordinate'
+            ],
+            'research' => [
+                'investigate', 'study', 'examine', 'explore', 'inquire', 'analyze',
+                'observe', 'review', 'experiment', 'develop'
+            ],
         ];
         
         return $synonymDict[$word] ?? [];

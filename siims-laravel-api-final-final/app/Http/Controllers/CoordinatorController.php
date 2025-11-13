@@ -283,13 +283,21 @@ class CoordinatorController extends UserController
        
         // Transform list of coordinators
         $transformedCoordinators = $listOfCoordinators->map(function ($coordinator) {
+            // Safely get user name fields - handle null user relationship
+            $firstName = ($coordinator->user && $coordinator->user->first_name) ? $coordinator->user->first_name : "";
+            $middleName = ($coordinator->user && $coordinator->user->middle_name) ? $coordinator->user->middle_name : "";
+            $lastName = ($coordinator->user && $coordinator->user->last_name) ? $coordinator->user->last_name : "";
+            
+            // Get full name from database (fetches first_name, middle_name, last_name from users table)
+            $fullName = $this->getFullName(
+                firstName: $firstName,
+                middleName: $middleName,
+                lastName: $lastName,
+            );
+            
             return [
                 "id" => $coordinator->id,
-                "name" => $this->getFullName(
-                    firstName: $coordinator->user->first_name ?? "",
-                    middleName: $coordinator->user->middle_name ?? "",
-                    lastName: $coordinator->user->last_name ?? "",
-                ),
+                "name" => $fullName, // Full name from database (first + middle + last from users table)
                 "program_id" => $coordinator->program_id,
             ];
         });

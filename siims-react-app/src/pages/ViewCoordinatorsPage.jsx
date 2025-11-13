@@ -49,14 +49,6 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
 
   // Row State
   const [rows, setRows] = useState([]);
-  // Analytics state
-  const [analyticsLoading, setAnalyticsLoading] = useState(false);
-  const [coordinatorAnalytics, setCoordinatorAnalytics] = useState([]);
-  // AI Insight feature removed
-  // const [aiInsight, setAiInsight] = useState("");
-  // const [aiLoading, setAiLoading] = useState(false);
-  // const [perCoordinatorInsights, setPerCoordinatorInsights] = useState({});
-  const analyticsRef = React.useRef(null);
 
   // Modal State
   const [isOpen, setIsOpen] = useState(false);
@@ -117,32 +109,107 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
     fetchAllSections();
   }, []);
 
-  // Fetch all coordinators for section modal
+  // Fetch all coordinators for section modal - use data from database
   const fetchAllCoordinators = async () => {
     try {
+      // First, try to use the rows data (already loaded from data grid with full coordinator info)
+      if (rows && rows.length > 0) {
+        const normalizedFromRows = rows.map((c) => {
+          const id = String(c.id ?? c.user_id ?? c.coordinator_id ?? "");
+          // Rows data from data grid has first_name, last_name, middle_name from database
+          const firstName = c.first_name ?? c.firstName ?? "";
+          const middleName = c.middle_name ?? c.middleName ?? "";
+          const lastName = c.last_name ?? c.lastName ?? "";
+          
+          // Construct full name from database fields
+          let displayName = "";
+          if (firstName || lastName) {
+            displayName = `${firstName} ${middleName} ${lastName}`.trim();
+          } else if (c.name) {
+            // Fallback to name field if available
+            displayName = String(c.name).trim();
+          }
+          
+          if (!displayName) {
+            displayName = "Unknown Coordinator";
+          }
+          
+          return {
+            id: id,
+            name: displayName,
+            first_name: firstName || undefined,
+            middle_name: middleName || undefined,
+            last_name: lastName || undefined,
+          };
+        });
+        
+        console.log('Using coordinators from rows (data grid):', normalizedFromRows);
+        setAllCoordinators(normalizedFromRows);
+        return;
+      }
+      
+      // Fallback: Fetch from API endpoint
       const resp = await getRequest({ url: `/api/v1/users/coordinators/lists` });
-      const coordList = Array.isArray(resp) ? resp : (Array.isArray(resp?.data) ? resp.data : []);
-      // Normalize coordinators to have id, first_name, last_name, and name
+      
+      console.log('Raw API response:', resp);
+      
+      // API returns array of { id, name, program_id } directly
+      let coordList = [];
+      if (Array.isArray(resp)) {
+        coordList = resp;
+      } else if (resp && Array.isArray(resp.data)) {
+        coordList = resp.data;
+      } else if (resp && resp.data && Array.isArray(resp.data.data)) {
+        coordList = resp.data.data;
+      }
+      
+      console.log('Extracted coordinators list from API:', coordList);
+      
+      if (coordList.length === 0) {
+        console.warn('No coordinators found in API response!');
+        setAllCoordinators([]);
+        return;
+      }
+      
+      // Normalize coordinators from API - API returns { id, name, program_id } where name is full name from database
       const normalized = coordList.map((c) => {
-        const id = c.id ?? c.user_id ?? c.coordinator_id ?? "";
-        // Check if API returns full name directly (from getAllListsOfCoordinators)
-        const fullName = c.name ?? "";
-        // Try to extract first/last names, or use full name
-        const first = c.first_name ?? c.firstName ?? c.user?.first_name ?? "";
-        const middle = c.middle_name ?? c.middleName ?? c.user?.middle_name ?? "";
-        const last = c.last_name ?? c.lastName ?? c.user?.last_name ?? "";
-        // If we have full name but no separate names, use full name
-        const displayName = fullName || (first || last ? `${first} ${middle} ${last}`.trim() : String(id));
+        const id = String(c.id ?? c.user_id ?? c.coordinator_id ?? "");
+        
+        // API directly returns the name field from database
+        const apiName = c.name ? String(c.name).trim() : "";
+        
+        // Use the API name directly - it's already the full name from database
+        let displayName = apiName;
+        
+        // If name is missing, try to construct from parts
+        if (!displayName) {
+          const first = String(c.first_name ?? c.firstName ?? c.user?.first_name ?? "").trim();
+          const middle = String(c.middle_name ?? c.middleName ?? c.user?.middle_name ?? "").trim();
+          const last = String(c.last_name ?? c.lastName ?? c.user?.last_name ?? "").trim();
+          
+          if (first || last) {
+            displayName = `${first} ${middle} ${last}`.trim();
+          }
+        }
+        
+        if (!displayName) {
+          console.warn(`Coordinator ${id} has no name in database!`);
+          displayName = "Unknown Coordinator";
+        }
+        
         return { 
-          id: String(id), 
-          first_name: first, 
-          middle_name: middle, 
-          last_name: last,
-          name: displayName
+          id: id, 
+          name: displayName,
+          first_name: c.first_name ?? c.firstName ?? c.user?.first_name ?? undefined,
+          middle_name: c.middle_name ?? c.middleName ?? c.user?.middle_name ?? undefined,
+          last_name: c.last_name ?? c.lastName ?? c.user?.last_name ?? undefined,
         };
       });
+      
+      console.log('Final normalized coordinators from API:', normalized);
       setAllCoordinators(normalized);
-    } catch (_) {
+    } catch (error) {
+      console.error('Error fetching coordinators:', error);
       setAllCoordinators([]);
     }
   };
@@ -157,7 +224,7 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
       setEditingSection(null);
       setEditSectionFormData({ name: "", coordinator_id: "", program_id: "" });
     }
-  }, [isCreateSectionOpen]);
+  }, [isCreateSectionOpen, rows]); // Add rows dependency so it refreshes when rows change
 
   const fetchAllSections = async () => {
     try {
@@ -641,182 +708,6 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
     setSelectedCoordinatorIds(selectionModel || []);
   };
 
-  // Load analytics for coordinators displayed in the grid
-  const loadAnalytics = async () => {
-    try {
-      setAnalyticsLoading(true);
-      const apiBase = import.meta.env.VITE_API_BASE_URL;
-      const headers = {
-        Accept: "application/json",
-        Authorization: `Bearer ${JSON.parse(localStorage.getItem("ACCESS_TOKEN"))}`,
-      };
-
-      // 0) Always build the coordinator list from backend (fetch ALL, not just grid page)
-      let coordItems = [];
-      try {
-        const attempts = [
-          // Prefer V2 with explicit role + large perPage
-          `${apiBase}/api/v1/users/v2/coordinators?page=1&perPage=1000&requestedBy=chairperson`,
-          // Non-paginated lists endpoint (all available to chairperson)
-          `${apiBase}/api/v1/users/coordinators/lists`,
-          // V1 with large perPage + role
-          `${apiBase}/api/v1/users/coordinators?perPage=1000&requestedBy=chairperson`,
-          // Legacy plain endpoint
-          `${apiBase}/api/v1/coordinators`,
-        ];
-        for (const url of attempts) {
-          try {
-            const r = await fetch(url, { headers, credentials: 'include' });
-            const p = await r.json().catch(() => ({}));
-            const list = Array.isArray(p?.data?.data)
-              ? p.data.data
-              : (Array.isArray(p?.data) ? p.data : (Array.isArray(p) ? p : []));
-            if (Array.isArray(list) && list.length) {
-              coordItems = list.map((c) => ({
-                id: String(c.id ?? c.user_id ?? c.coordinator_id ?? ''),
-                first: c.first_name || c.firstName || '',
-                last: c.last_name || c.lastName || '',
-                name: c.name || c.fullName || 'Coordinator',
-              }));
-              break;
-            }
-          } catch(_) { /* try next endpoint */ }
-        }
-      } catch(_) {}
-
-      // 1) Fetch students once to compute studentsCount per coordinator
-      let students = [];
-      try {
-        const r = await fetch(`${apiBase}/api/v1/chairperson/students`, { headers, credentials: "include" });
-        const p = await r.json().catch(() => ([]));
-        students = Array.isArray(p?.data) ? p.data : (Array.isArray(p) ? p : []);
-      } catch (_) {}
-
-      const out = [];
-      // Minimal helpers for fallback computation from real weekly-entries (no mock data)
-      const keywordSets = [
-        ["math", "mathematics", "science", "algorithm", "compute", "analysis"],
-        ["best practice", "standard", "policy", "method", "procedure", "protocol"],
-        ["analyze", "analysis", "problem", "root cause", "diagnose", "troubleshoot"],
-        ["user need", "requirement", "stakeholder", "ux", "usability"],
-        ["design", "implement", "evaluate", "build", "develop", "test", "setup", "configure", "configuration", "install"],
-        ["safety", "health", "environment", "security", "ethical"],
-        ["tool", "framework", "library", "technology", "platform"],
-        ["team", "collaborat", "leader", "group"],
-        ["plan", "schedule", "timeline", "project plan"],
-        ["communicat", "present", "documentation", "write", "report"],
-        ["impact", "society", "organization", "community"],
-        ["ethical", "privacy", "legal", "compliance"],
-        ["learn", "self-study", "latest", "new skill"],
-        ["research", "experiment", "study", "investigation"],
-        ["filipino", "heritage", "culture", "tradition"],
-      ];
-      const stripHtml = (t) => String(t || "")
-        .replace(/<\s*\/? .*?>/g, ' ')
-        .replace(/&nbsp;/gi, ' ')
-        .replace(/&amp;/gi, '&')
-        .replace(/&lt;/gi, '<')
-        .replace(/&gt;/gi, '>')
-        .replace(/\s+/g, ' ')
-        .trim();
-      const computeFromEntries = (list = []) => {
-        const text = list.map((r)=> `${stripHtml(r.tasks||r.task||r.activities||"")} ${stripHtml(r.learnings||r.learning||"")}`).join(' ').toLowerCase();
-        const counts = keywordSets.map((set)=> set.some((kw)=> text.includes(kw)) ? 1 : 0);
-        const nonZero = counts.reduce((a,b)=> a+b, 0);
-        return Math.round((nonZero/15)*100);
-      };
-      const computeCountsFromEntries = (list = []) => {
-        const text = list.map((r)=> `${stripHtml(r.tasks||r.task||r.activities||"")} ${stripHtml(r.learnings||r.learning||"")}`).join(' ').toLowerCase();
-        return keywordSets.map((set)=> {
-          let c = 0; for (const kw of set) { if (text.includes(kw)) c++; }
-          return c;
-        });
-      };
-      for (const c of coordItems) {
-        const id = String(c.id || "");
-        const label = `${id} - ${[c.first, c.last].filter(Boolean).join(' ') || c.name || 'Coordinator'}`;
-        // Fetch accurate keywordScores from backend using coordinatorId (overall)
-        let keywordScores = [];
-        // we removed trends and any client-side fallbacks
-        try {
-          const qp = new URLSearchParams({ coordinatorId: String(id), useGPT: '0', analysisType: 'chairman', isOverall: '1' });
-          const resp = await fetch(`${apiBase}/api/v1/summary/chair?${qp.toString()}`, {
-            method: 'GET', headers: { ...headers, 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'include'
-          });
-          if (resp.ok) {
-            const j = await resp.json();
-            if (Array.isArray(j?.combinedScores)) keywordScores = j.combinedScores; else if (Array.isArray(j?.keywordScores)) keywordScores = j.keywordScores;
-          }
-        } catch (_) {}
-        let nonZero = (keywordScores || []).filter((v) => Number(v) > 0).length;
-        let poCoveragePercent = Math.round((nonZero / 15) * 100);
-
-        // Student count for this coordinator
-        const coordinatorKeyNames = ["coordinator_id", "coordinatorId", "coordinatorID", "coordinator_id_fk"]; 
-        const studentsCount = students.filter((s) => {
-          for (const key of coordinatorKeyNames) {
-            if (s && Object.prototype.hasOwnProperty.call(s, key)) {
-              if (String(s[key] ?? "") === String(id)) return true;
-            }
-          }
-          const cc = s.coordinator || s.ojt_coordinator || s.assignedCoordinator;
-          const cid2 = cc ? (cc.id ?? cc.coordinator_id) : undefined;
-          return String(cid2 ?? "") === String(id);
-        }).length;
-        // Strengths and gaps primarily from backend scores; fallback to entries when empty
-        let strengths = [];
-        let gaps = [];
-        const pairsFromApi = (keywordScores || []).map((v, i) => ({ po: `PO${i+1}`, v: Number(v)||0 }));
-        if (studentsCount === 0) {
-          poCoveragePercent = 0;
-          strengths = [];
-          gaps = [];
-        } else if (pairsFromApi.length > 0) {
-          strengths = pairsFromApi.filter(x => x.v > 0).sort((a,b)=> b.v - a.v).map(x => x.po);
-          gaps = pairsFromApi.filter(x => x.v === 0).map(x => x.po);
-        } else {
-          // Fallback to entries for strengths/gaps and coverage
-          try {
-            const coordinatorKeyNames = ["coordinator_id", "coordinatorId", "coordinatorID", "coordinator_id_fk"]; 
-            const assigned = students.filter((s) => {
-              for (const key of coordinatorKeyNames) {
-                if (s && Object.prototype.hasOwnProperty.call(s, key)) {
-                  if (String(s[key] ?? "") === String(id)) return true;
-                }
-              }
-              const cc = s.coordinator || s.ojt_coordinator || s.assignedCoordinator;
-              const cid2 = cc ? (cc.id ?? cc.coordinator_id) : undefined;
-              return String(cid2 ?? "") === String(id);
-            });
-            const reqs = assigned.map((s) => {
-              const sid = s.id ?? s.student_id ?? s.user_id ?? s.application_id;
-              return fetch(`${apiBase}/api/v1/weekly-entries/student/${sid}`, { headers, credentials: 'include' })
-                .then((r)=> r.json()).catch(()=> []);
-            });
-            const payloads = await Promise.all(reqs);
-            const normalize = (p)=> Array.isArray(p?.data) ? p.data : (Array.isArray(p?.weekly_entries) ? p.weekly_entries : (Array.isArray(p) ? p : []));
-            const entries = payloads.flatMap((p)=> normalize(p));
-            if (entries.length) {
-              poCoveragePercent = computeFromEntries(entries);
-              const counts = computeCountsFromEntries(entries);
-              const pairs = counts.map((v, i) => ({ po: `PO${i+1}`, v: Number(v)||0 }));
-              strengths = pairs.filter(x => x.v > 0).sort((a,b)=> b.v - a.v).map(x => x.po);
-              gaps = pairs.filter(x => x.v === 0).map(x => x.po);
-            }
-          } catch(_) {}
-        }
-        out.push({ id, label, poCoveragePercent, studentsCount, strengths, gaps });
-      }
-      out.sort((a,b)=> b.poCoveragePercent - a.poCoveragePercent);
-      setCoordinatorAnalytics(out);
-    } catch (_) {
-      setCoordinatorAnalytics([]);
-    } finally {
-      setAnalyticsLoading(false);
-    }
-  };
-
-  // AI Insight feature removed
 
 
   // ! Only Display this if the User is Admin
@@ -967,14 +858,31 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
                     >
                       <option value="">- Select Coordinator -</option>
                       {(allCoordinators.length > 0 ? allCoordinators : rows).map((coord) => {
-                        // Use name if available, otherwise construct from first_name/last_name, fallback to ID
-                        const displayName = coord.name 
-                          || (coord.first_name || coord.last_name 
-                            ? `${coord.first_name || ''} ${coord.middle_name || ''} ${coord.last_name || ''}`.trim()
-                            : `Coordinator ${coord.id}`);
+                        const coordinatorId = String(coord.id ?? coord.user_id ?? coord.coordinator_id ?? '');
+                        // Extract coordinator name - API returns name field directly
+                        let coordinatorName = '';
+                        
+                        // Priority 1: Use the name field from API (this is what the API provides)
+                        if (coord.name && coord.name.trim()) {
+                          coordinatorName = coord.name.trim();
+                        }
+                        // Priority 2: Construct from individual name parts
+                        else if (coord.first_name || coord.last_name) {
+                          coordinatorName = `${coord.first_name || ''} ${coord.middle_name || ''} ${coord.last_name || ''}`.trim();
+                        } else if (coord.firstName || coord.lastName) {
+                          coordinatorName = `${coord.firstName || ''} ${coord.middleName || ''} ${coord.lastName || ''}`.trim();
+                        } else if (coord.user?.first_name || coord.user?.last_name) {
+                          coordinatorName = `${coord.user.first_name || ''} ${coord.user.middle_name || ''} ${coord.user.last_name || ''}`.trim();
+                        }
+                        
+                        // Only use default if truly no name found
+                        if (!coordinatorName) {
+                          coordinatorName = 'Unknown Coordinator';
+                        }
+                        
                         return (
-                          <option key={String(coord.id)} value={String(coord.id)}>
-                            {displayName}
+                          <option key={coordinatorId} value={coordinatorId}>
+                            {coordinatorId} - {coordinatorName}
                           </option>
                         );
                       })}
@@ -1039,14 +947,23 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
                                 >
                                   <option value="">- Select -</option>
                                   {(allCoordinators.length > 0 ? allCoordinators : rows).map((coord) => {
-                                    // Use name if available, otherwise construct from first_name/last_name, fallback to ID
-                                    const displayName = coord.name 
-                                      || (coord.first_name || coord.last_name 
-                                        ? `${coord.first_name || ''} ${coord.middle_name || ''} ${coord.last_name || ''}`.trim()
-                                        : `Coordinator ${coord.id}`);
+                                    const coordinatorId = String(coord.id ?? coord.user_id ?? coord.coordinator_id ?? '');
+                                    // Extract coordinator name from various possible fields
+                                    let coordinatorName = '';
+                                    if (coord.name && coord.name.trim() && coord.name !== coordinatorId) {
+                                      coordinatorName = coord.name.trim();
+                                    } else if (coord.first_name || coord.last_name) {
+                                      coordinatorName = `${coord.first_name || ''} ${coord.middle_name || ''} ${coord.last_name || ''}`.trim();
+                                    } else if (coord.firstName || coord.lastName) {
+                                      coordinatorName = `${coord.firstName || ''} ${coord.middleName || ''} ${coord.lastName || ''}`.trim();
+                                    }
+                                    // If still no name found, use a default
+                                    if (!coordinatorName || coordinatorName === coordinatorId) {
+                                      coordinatorName = 'Coordinator';
+                                    }
                                     return (
-                                      <option key={String(coord.id)} value={String(coord.id)}>
-                                        {displayName}
+                                      <option key={coordinatorId} value={coordinatorId}>
+                                        {coordinatorId} - {coordinatorName}
                                       </option>
                                     );
                                   })}
@@ -1256,48 +1173,6 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
             scrollableHeight={600}
           />
 
-          {/* Analytics below grid */}
-          <div className="mt-6 bg-white border rounded-lg p-4" ref={analyticsRef}>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-lg font-semibold text-gray-800">Program Outcomes Coverage by Coordinator</h4>
-              <div className="flex gap-2">
-                <button onClick={loadAnalytics} className="px-3 py-2 bg-slate-700 text-white rounded hover:bg-slate-800">{analyticsLoading ? 'Loading…' : 'Load Analytics'}</button>
-                {/* AI Insight feature removed */}
-              </div>
-            </div>
-            {coordinatorAnalytics.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-50 text-gray-700">
-                      <th className="text-left px-3 py-2">Coordinator</th>
-                      <th className="text-left px-3 py-2">PO Coverage</th>
-                      <th className="text-left px-3 py-2">Students</th>
-                      <th className="text-left px-3 py-2">Gaps (all POs with zero)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {coordinatorAnalytics.map((r) => (
-                      <tr key={r.id} className="border-t">
-                        <td className="px-3 py-2 whitespace-nowrap">{r.label}</td>
-                        <td className="px-3 py-2">
-                          <div className="h-3 bg-gray-200 rounded relative" style={{ minWidth: 200 }}>
-                            <div className="h-3 bg-green-600 rounded" style={{ width: `${r.poCoveragePercent}%` }}></div>
-                            <div className="absolute inset-0 flex items-center justify-center text-[11px] text-white">{r.poCoveragePercent}%</div>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2">{r.studentsCount}</td>
-                        <td className="px-3 py-2">{(r.gaps || []).join(', ') || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-gray-500 text-sm">Click "Load Analytics" to compute coverage scores for the coordinators in this list.</div>
-            )}
-            {/* AI Insight feature removed; trends removed previously */}
-          </div>
 
           {/* Modals */}
           {/* Add Form Modal */}
@@ -1402,14 +1277,31 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
                     >
                       <option value="">- Select Coordinator -</option>
                       {(allCoordinators.length > 0 ? allCoordinators : rows).map((coord) => {
-                        // Use name if available, otherwise construct from first_name/last_name, fallback to ID
-                        const displayName = coord.name 
-                          || (coord.first_name || coord.last_name 
-                            ? `${coord.first_name || ''} ${coord.middle_name || ''} ${coord.last_name || ''}`.trim()
-                            : `Coordinator ${coord.id}`);
+                        const coordinatorId = String(coord.id ?? coord.user_id ?? coord.coordinator_id ?? '');
+                        // Extract coordinator name - API returns name field directly
+                        let coordinatorName = '';
+                        
+                        // Priority 1: Use the name field from API (this is what the API provides)
+                        if (coord.name && coord.name.trim()) {
+                          coordinatorName = coord.name.trim();
+                        }
+                        // Priority 2: Construct from individual name parts
+                        else if (coord.first_name || coord.last_name) {
+                          coordinatorName = `${coord.first_name || ''} ${coord.middle_name || ''} ${coord.last_name || ''}`.trim();
+                        } else if (coord.firstName || coord.lastName) {
+                          coordinatorName = `${coord.firstName || ''} ${coord.middleName || ''} ${coord.lastName || ''}`.trim();
+                        } else if (coord.user?.first_name || coord.user?.last_name) {
+                          coordinatorName = `${coord.user.first_name || ''} ${coord.user.middle_name || ''} ${coord.user.last_name || ''}`.trim();
+                        }
+                        
+                        // Only use default if truly no name found
+                        if (!coordinatorName) {
+                          coordinatorName = 'Unknown Coordinator';
+                        }
+                        
                         return (
-                          <option key={String(coord.id)} value={String(coord.id)}>
-                            {displayName}
+                          <option key={coordinatorId} value={coordinatorId}>
+                            {coordinatorId} - {coordinatorName}
                           </option>
                         );
                       })}
@@ -1474,14 +1366,23 @@ const ViewCoordinatorsPage = ({ authorizeRole }) => {
                                 >
                                   <option value="">- Select -</option>
                                   {(allCoordinators.length > 0 ? allCoordinators : rows).map((coord) => {
-                                    // Use name if available, otherwise construct from first_name/last_name, fallback to ID
-                                    const displayName = coord.name 
-                                      || (coord.first_name || coord.last_name 
-                                        ? `${coord.first_name || ''} ${coord.middle_name || ''} ${coord.last_name || ''}`.trim()
-                                        : `Coordinator ${coord.id}`);
+                                    const coordinatorId = String(coord.id ?? coord.user_id ?? coord.coordinator_id ?? '');
+                                    // Extract coordinator name from various possible fields
+                                    let coordinatorName = '';
+                                    if (coord.name && coord.name.trim() && coord.name !== coordinatorId) {
+                                      coordinatorName = coord.name.trim();
+                                    } else if (coord.first_name || coord.last_name) {
+                                      coordinatorName = `${coord.first_name || ''} ${coord.middle_name || ''} ${coord.last_name || ''}`.trim();
+                                    } else if (coord.firstName || coord.lastName) {
+                                      coordinatorName = `${coord.firstName || ''} ${coord.middleName || ''} ${coord.lastName || ''}`.trim();
+                                    }
+                                    // If still no name found, use a default
+                                    if (!coordinatorName || coordinatorName === coordinatorId) {
+                                      coordinatorName = 'Coordinator';
+                                    }
                                     return (
-                                      <option key={String(coord.id)} value={String(coord.id)}>
-                                        {displayName}
+                                      <option key={coordinatorId} value={coordinatorId}>
+                                        {coordinatorId} - {coordinatorName}
                                       </option>
                                     );
                                   })}

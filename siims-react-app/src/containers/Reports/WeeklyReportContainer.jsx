@@ -433,7 +433,6 @@ const WeeklyReportContainer = ({ authorizeRole }) => {
       filterWeek={filterWeek}
       setFilterWeek={setFilterWeek}
       groupedByWeek={groupedByWeek}
-      pendingRequests={pendingRequests}
       lockedWeek={lockedWeek}
     />
   );
