@@ -76,10 +76,10 @@ class CoordinatorSummaryController extends Controller
             });
         }
 
-        // OPTIMIZATION: For "overall" week, use smarter query strategy
+        // OPTIMIZATION: For "overall" week
         if ($isOverall || $week === null || $week === 0) {
             // "Overall" case: Get all entries but limit to prevent timeout
-            $maxEntries = 2000; // Higher limit for overall to get better coverage
+            $maxEntries = 3000; 
             $rows = $query
                 ->whereNotNull('we.tasks')
                 ->whereNotNull('we.learnings')
@@ -110,17 +110,12 @@ class CoordinatorSummaryController extends Controller
         // Convert to third-person for consistency
         $combined = $this->convertToThirdPerson($combined);
 
-        // Pass week number to adapter for OpenAI summarization
-        // The adapter handles both summary generation AND keyword matching (text mining)
-        // OpenAI service will format the summary with proper week prefix
+        
         $summaryResult = $adapter->analyze($combined, $analysisType, $useGPT, $week);
         $summary = $summaryResult['summary'];
         $keywordScores = $summaryResult['keywordScores'] ?? [];
 
-        // OPTIMIZATION: For large datasets, intelligently limit data sent to OpenAI
-        // Reduced limits for faster OpenAI processing
-        // For "overall" week, use moderate limits to speed up processing
-        // For specific weeks, use lower limits for even faster responses
+        
         if ($isOverall || $week === null || $week === 0) {
             // "Overall" week: Reduced limits for faster processing
             $maxActivities = 60; // Reduced from 100 for faster processing

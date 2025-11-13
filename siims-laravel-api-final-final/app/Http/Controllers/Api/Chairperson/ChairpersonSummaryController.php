@@ -270,8 +270,7 @@ class ChairpersonSummaryController extends Controller
             // Set a timeout for the entire operation to prevent hanging
             $startTime = microtime(true);
             
-            // OPTIMIZATION: For large datasets, intelligently limit data sent to OpenAI
-            // For "overall" week, use higher limits but still cap to prevent timeouts
+           
             // For specific weeks, use moderate limits
             if ($week === null || $week === 0) {
                 // "Overall" week: Allow more data but still cap it
