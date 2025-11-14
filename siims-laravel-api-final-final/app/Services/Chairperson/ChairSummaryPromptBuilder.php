@@ -44,13 +44,8 @@ class ChairSummaryPromptBuilder
             return $this->buildChairWeeklyPrompt($jsonData, $assessment);
         }
 
-        // Coordinator weekly (single student)
-        if ($type === 'coordinator_week') {
-            return $this->buildCoordinatorWeeklyPrompt($jsonData, $assessment);
-        }
-
-        // Default generic weekly
-        return $this->buildDefaultWeeklyPrompt($jsonData, $assessment);
+        // Default to chairperson weekly if type is not recognized
+        return $this->buildChairWeeklyPrompt($jsonData, $assessment);
     }
 
     /**
@@ -62,8 +57,6 @@ class ChairSummaryPromptBuilder
         $system = "You are an academic writing expert. Create a polished, professional summary for an internship program report.";
         
         $user = "STUDENT DATA (JSON FORMAT FOR FAST PROCESSING): {$jsonData}
-
-ASSESSMENT: {$assessment}
 
 INSTRUCTIONS:
 - Parse the JSON data above to extract activities and learnings arrays
@@ -114,8 +107,6 @@ Generate a single, polished paragraph that reads like professional academic writ
         
         $user = "STUDENT DATA (JSON FORMAT FOR FAST PROCESSING): {$jsonData}
 
-ASSESSMENT: {$assessment}
-
 INSTRUCTIONS:
 - Parse the JSON data above to extract activities and learnings arrays
 - Use the activities and learnings from the JSON to create the summary
@@ -146,54 +137,5 @@ Generate a single, polished paragraph that reads like professional academic writ
         ];
     }
 
-    /**
-     * Build coordinator weekly prompt
-     * OPTIMIZED: Uses JSON format for faster processing
-     */
-    private function buildCoordinatorWeeklyPrompt(string $jsonData, string $assessment): array
-    {
-        $system = "You are an academic writing expert. Create a polished, professional weekly summary for an internship program report.";
-        
-        $user = "STUDENT DATA (JSON FORMAT FOR FAST PROCESSING): {$jsonData}
-
-ASSESSMENT: {$assessment}
-
-INSTRUCTIONS:
-- Parse the JSON data above to extract activities and learnings arrays
-- Use the activities and learnings from the JSON to create the summary
-
-WRITING REQUIREMENTS:
-1. Begin EXACTLY with: 'For this week, the student '
-2. Write EXCLUSIVELY in third person (the student, they, their) — NEVER use first person (I, me, my, we, us, our)
-3. Convert list-like fragments into fluent sentences; avoid repeating labels like 'activities' or 'learnings'
-4. Produce 2–3 coherent sentences that synthesize ACTIVITIES and LEARNING OUTCOMES into a narrative
-5. Ensure perfect grammar, punctuation, and sentence flow with academic tone
-6. Create logical connections between activities and outcomes using transitional phrases
-7. Maintain professional, formal language throughout
-8. Avoid redundancy and do not echo the inputs verbatim
-
-STYLE GUIDELINES:
-- Use active voice where appropriate
-- Include specific details from the data
-- Create a narrative that flows logically
-- Use academic connectors (furthermore, moreover, consequently, etc.)
-- Ensure each sentence builds upon the previous one
-- End with a strong concluding statement
-
-Generate a single, polished paragraph that reads like professional academic writing.";
-
-        return [
-            ['role' => 'system', 'content' => $system],
-            ['role' => 'user', 'content' => $user]
-        ];
-    }
-
-    /**
-     * Build default weekly prompt
-     */
-    private function buildDefaultWeeklyPrompt(string $jsonData, string $assessment): array
-    {
-        return $this->buildChairWeeklyPrompt($jsonData, $assessment);
-    }
 }
 

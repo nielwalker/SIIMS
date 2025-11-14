@@ -4,6 +4,7 @@ namespace App\Services\Coordinator;
 
 use App\Services\OpenAI\OpenAIService;
 use App\Services\Coordinator\CoordinatorSummaryPromptBuilder;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Coordinator Summary Adapter
@@ -106,17 +107,43 @@ class CoordinatorSummaryAdapter
                     }
                     $usedGPT = true;
                 } else {
-                    \Log::warning('OpenAI summarization failed in SummaryAdapter', ['error' => $response['error'] ?? 'Unknown error']);
+                    Log::warning('OpenAI summarization failed in CoordinatorSummaryAdapter', [
+                        'error' => $response['error'] ?? 'Unknown error',
+                        'week' => $weekNumber
+                    ]);
                     $summary = $clean ?: 'No journal entries found.';
                 }
             } catch (\Throwable $e) {
-                \Log::error('OpenAI Summarization Error in SummaryAdapter:', ['message' => $e->getMessage()]);
+                Log::error('OpenAI Summarization Error in CoordinatorSummaryAdapter', [
+                    'message' => $e->getMessage(),
+                    'week' => $weekNumber,
+                    'trace' => $e->getTraceAsString()
+                ]);
                 $summary = $clean ?: 'No journal entries found.';
             }
         } else {
             // Fallback if OpenAI is not available
+            Log::info('Coordinator Adapter Result', [
+                'success' => false,
+                'week' => $weekNumber,
+                'usedGPT' => false,
+                'reason' => 'OpenAI not available',
+                'summary_length' => strlen($summary),
+                'keyword_scores_count' => count($scores)
+            ]);
             $summary = $clean ?: 'No journal entries found.';
         }
+
+        // Log coordinator adapter final result
+        Log::info('Coordinator Adapter Result', [
+            'week' => $weekNumber,
+            'success' => $usedGPT,
+            'usedGPT' => $usedGPT,
+            'summary_length' => strlen($summary),
+            'summary_preview' => strlen($summary) > 0 ? substr($summary, 0, 150) . '...' : null,
+            'keyword_scores_count' => count($scores),
+            'keyword_scores' => $scores
+        ]);
 
         return [
             'summary' => $summary,

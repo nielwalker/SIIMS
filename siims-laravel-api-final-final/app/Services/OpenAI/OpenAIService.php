@@ -4,6 +4,7 @@ namespace App\Services\OpenAI;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\File;
 
 /**
  * Unified OpenAI Service
@@ -32,11 +33,51 @@ class OpenAIService
         $messages,
         array $options = []
     ): array {
+        // Initialize request ID for tracking (used in all logs)
+        $requestId = uniqid('req_', true);
+        
         try {
             $apiKey = $this->getApiKey();
             
             if (!$apiKey) {
                 Log::warning('OpenAI API key not configured');
+                
+                // Prepare log data for no API key
+                $noApiKeyLogData = [
+                    'request_id' => $requestId,
+                    'timestamp' => now()->toIso8601String(),
+                    'type' => 'prompt_request_no_api_key',
+                    'error' => 'API key not configured',
+                    'prompt' => null
+                ];
+                
+                // Log simple message to Laravel log (no prompt details)
+                Log::warning('OpenAI Prompt Request - API key not configured', [
+                    'request_id' => $requestId
+                ]);
+                
+                // Write full details to dedicated OpenAI JSON log file
+                $this->writeToJsonLog($noApiKeyLogData);
+                
+                // Prepare log data for result error
+                $resultErrorLogData = [
+                    'request_id' => $requestId,
+                    'timestamp' => now()->toIso8601String(),
+                    'type' => 'prompt_result_error',
+                    'success' => false,
+                    'error' => [
+                        'message' => 'API key not configured'
+                    ]
+                ];
+                
+                // Log simple error to Laravel log
+                Log::error('OpenAI Prompt Result (Error) - API key not configured', [
+                    'request_id' => $requestId
+                ]);
+                
+                // Write full error details to dedicated OpenAI JSON log file
+                $this->writeToJsonLog($resultErrorLogData);
+                
                 return [
                     'success' => false,
                     'content' => null,
@@ -56,6 +97,37 @@ class OpenAIService
                 'timeout' => self::DEFAULT_TIMEOUT,
                 'top_p' => 0.95,
             ], $options);
+            
+            // Detect if this is a data-heavy prompt (PO, Summary, or Coordinator prompts)
+            // These prompts contain large JSON/data that we don't want in Laravel logs
+            $isDataHeavyPrompt = $this->isDataHeavyPrompt($normalizedMessages);
+            
+            // For data-heavy prompts, skip prompt logging entirely - only log results
+            if (!$isDataHeavyPrompt) {
+                // Prepare log data for prompt request
+                $requestLogData = [
+                    'request_id' => $requestId,
+                    'timestamp' => now()->toIso8601String(),
+                    'type' => 'prompt_request',
+                    'prompt' => [
+                        'model' => $config['model'],
+                        'messages' => $normalizedMessages,
+                        'temperature' => $config['temperature'],
+                        'max_tokens' => $config['max_tokens'],
+                        'top_p' => $config['top_p'] ?? 0.95,
+                    ]
+                ];
+                
+                // Log simple message to Laravel log (no prompt details)
+                Log::info('OpenAI Prompt Request', [
+                    'request_id' => $requestId,
+                    'model' => $config['model'],
+                    'messages_count' => count($normalizedMessages)
+                ]);
+                
+                // Write full details to dedicated OpenAI JSON log file
+                $this->writeToJsonLog($requestLogData);
+            }
 
             // Configure HTTP client with SSL verification
             // For Windows development, we may need to disable SSL verification
@@ -95,6 +167,46 @@ class OpenAIService
                         'total_tokens' => $usage['total_tokens'] ?? 0,
                     ]);
                 }
+                
+                // Prepare log data for prompt result (only OpenAI response data, no prompt)
+                $resultLogData = [
+                    'request_id' => $requestId,
+                    'timestamp' => now()->toIso8601String(),
+                    'type' => 'prompt_result',
+                    'success' => true,
+                    'result' => [
+                        'model' => $data['model'] ?? null,
+                        'content' => $content ? trim($content) : null,
+                        'usage' => [
+                            'prompt_tokens' => $usage['prompt_tokens'] ?? 0,
+                            'completion_tokens' => $usage['completion_tokens'] ?? 0,
+                            'total_tokens' => $usage['total_tokens'] ?? 0,
+                        ],
+                        'response_id' => $data['id'] ?? null,
+                        'created' => $data['created'] ?? null,
+                        'finish_reason' => $data['choices'][0]['finish_reason'] ?? null,
+                        'object' => $data['object'] ?? null,
+                    ]
+                ];
+                
+                // Log summary result to Laravel log (no raw content)
+                Log::info('OpenAI Prompt Result', [
+                    'request_id' => $requestId,
+                    'success' => true,
+                    'model' => $data['model'] ?? null,
+                    'content_length' => $content ? strlen($content) : 0,
+                    'content_preview' => $content ? substr(trim($content), 0, 100) . '...' : null,
+                    'usage' => [
+                        'prompt_tokens' => $usage['prompt_tokens'] ?? 0,
+                        'completion_tokens' => $usage['completion_tokens'] ?? 0,
+                        'total_tokens' => $usage['total_tokens'] ?? 0,
+                    ],
+                    'response_id' => $data['id'] ?? null,
+                    'finish_reason' => $data['choices'][0]['finish_reason'] ?? null
+                ]);
+                
+                // Write full details (including content) to dedicated OpenAI JSON log file
+                $this->writeToJsonLog($resultLogData);
 
                 return [
                     'success' => true,
@@ -104,23 +216,62 @@ class OpenAIService
                     'usage' => $usage // Include token usage in response
                 ];
             } else {
-                Log::error('OpenAI API Error', [
+                $errorData = $response->json();
+                
+                // Prepare log data for error result (only error details, no prompt)
+                $errorLogData = [
+                    'request_id' => $requestId,
+                    'timestamp' => now()->toIso8601String(),
+                    'type' => 'prompt_result_error',
+                    'success' => false,
+                    'error' => [
+                        'status' => $response->status(),
+                        'message' => 'API call failed',
+                        'error_details' => $errorData
+                    ]
+                ];
+                
+                // Log simple error to Laravel log
+                Log::error('OpenAI Prompt Result (Error)', [
+                    'request_id' => $requestId,
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'message' => 'API call failed'
                 ]);
+                
+                // Write full error details to dedicated OpenAI JSON log file
+                $this->writeToJsonLog($errorLogData);
 
                 return [
                     'success' => false,
                     'content' => null,
                     'error' => 'API call failed',
-                    'raw' => $response->json()
+                    'raw' => $errorData
                 ];
             }
         } catch (\Exception $e) {
-            Log::error('OpenAI API Exception', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+            // Prepare log data for exception result (only exception details, no prompt)
+            $exceptionLogData = [
+                'request_id' => $requestId,
+                'timestamp' => now()->toIso8601String(),
+                'type' => 'prompt_result_exception',
+                'success' => false,
+                'error' => [
+                    'message' => $e->getMessage(),
+                    'exception' => get_class($e),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine()
+                ]
+            ];
+            
+            // Log simple exception to Laravel log
+            Log::error('OpenAI Prompt Result (Exception)', [
+                'request_id' => $requestId,
+                'message' => $e->getMessage(),
+                'exception' => get_class($e)
             ]);
+            
+            // Write full exception details to dedicated OpenAI JSON log file
+            $this->writeToJsonLog($exceptionLogData);
 
             return [
                 'success' => false,
@@ -286,6 +437,126 @@ class OpenAIService
     public function isAvailable(): bool
     {
         return !empty($this->getApiKey());
+    }
+
+    /**
+     * Check if the prompt contains large data (PO, Summary, or Coordinator prompts)
+     * These prompts include JSON/data that we don't want in Laravel logs
+     *
+     * @param array $messages Normalized messages array
+     * @return bool
+     */
+    private function isDataHeavyPrompt(array $messages): bool
+    {
+        // Combine all message content to check
+        $combinedContent = '';
+        foreach ($messages as $message) {
+            if (isset($message['content']) && is_string($message['content'])) {
+                $combinedContent .= ' ' . strtolower($message['content']);
+            }
+        }
+        
+        // Check for PO-related keywords
+        $poKeywords = [
+            'program outcome',
+            'program outcomes',
+            'po1', 'po2', 'po3', 'po4', 'po5', 'po6', 'po7', 'po8', 'po9', 'po10',
+            'po11', 'po12', 'po13', 'po14', 'po15',
+            'pos_hit', 'pos_not_hit', 'po_hit', 'po_not_hit',
+            'po_context_hit', 'po_word_hit',
+            'identify program outcomes',
+            'po analysis',
+            'bsit internship evaluator'
+        ];
+        
+        // Check for Summary-related keywords (Chairperson)
+        $summaryKeywords = [
+            'student data (json format',
+            'json format for fast processing',
+            'academic writing expert',
+            'create a polished, professional summary',
+            'internship program report',
+            'weekly summary',
+            'overall summary',
+            'chairperson',
+            'for overall, the students',
+            'for this week, those students'
+        ];
+        
+        // Check for Coordinator-related keywords
+        $coordinatorKeywords = [
+            'coordinator summary',
+            'single student\'s internship journal',
+            'source text (cleaned)',
+            'for this week, the student',
+            'coordinator',
+            'po word hits',
+            'contextual program outcome definitions'
+        ];
+        
+        // Check for large JSON data patterns
+        $hasLargeJsonData = preg_match('/"activities"\s*:|"learnings"\s*:|source text/i', $combinedContent);
+        
+        // Check PO keywords
+        foreach ($poKeywords as $keyword) {
+            if (strpos($combinedContent, strtolower($keyword)) !== false) {
+                return true;
+            }
+        }
+        
+        // Check Summary keywords
+        foreach ($summaryKeywords as $keyword) {
+            if (strpos($combinedContent, strtolower($keyword)) !== false) {
+                return true;
+            }
+        }
+        
+        // Check Coordinator keywords
+        foreach ($coordinatorKeywords as $keyword) {
+            if (strpos($combinedContent, strtolower($keyword)) !== false) {
+                return true;
+            }
+        }
+        
+        // Check for large JSON/data patterns
+        if ($hasLargeJsonData) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    /**
+     * Write log entry to dedicated OpenAI JSON log file
+     * Each log entry is written as a single JSON line for easy parsing
+     *
+     * @param array $logData The log data to write
+     * @return void
+     */
+    private function writeToJsonLog(array $logData): void
+    {
+        try {
+            $logPath = storage_path('logs/openai.json');
+            
+            // Create logs directory if it doesn't exist
+            $logDir = dirname($logPath);
+            if (!File::exists($logDir)) {
+                File::makeDirectory($logDir, 0755, true);
+            }
+            
+            // Encode the log data as JSON (single line for easier parsing)
+            // Each entry is on its own line, making it easy to parse line by line
+            $jsonLine = json_encode($logData, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . "\n";
+            
+            // Append to the log file
+            File::append($logPath, $jsonLine);
+        } catch (\Exception $e) {
+            // If file writing fails, log the error but don't break the application
+            Log::warning('Failed to write to OpenAI JSON log file', [
+                'error' => $e->getMessage(),
+                'log_data' => $logData
+            ]);
+        }
     }
 }
 

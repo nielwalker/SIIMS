@@ -4,18 +4,7 @@ namespace App\Services\OpenAI;
 
 use Illuminate\Support\Facades\Log;
 
-/**
- * Summary Evaluation Service
- * 
- * Evaluates OpenAI-generated summaries against raw database data using:
- * - ROUGE-1: Unigram overlap (word-level precision/recall)
- * - ROUGE-2: Bigram overlap (2-word phrase precision/recall)
- * - ROUGE-L: Longest Common Subsequence (sentence-level similarity)
- * - BERT Score: Semantic similarity using word embeddings (simplified implementation)
- * 
- * Purpose: Track accuracy of OpenAI summaries compared to raw data from database
- * for capstone debugging and quality assurance.
- */
+
 class SummaryEvaluationService
 {
     /**
