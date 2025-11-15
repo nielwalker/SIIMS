@@ -94,16 +94,33 @@ class CoordinatorSummaryAdapter
                 $activities = [];
                 $learnings = [$clean]; // Combined text includes both activities and learnings
                 
-                // Build prompt for coordinator
-                $prompt = $this->coordinatorPromptBuilder->buildPrompt($activities, $learnings, '');
-                // Optimized for faster responses: reduced tokens and timeout
-                $response = $this->openAIService->callSimple($prompt, 'gpt-4o-mini', 250, 0.6, 25);
+                // Determine prompt type: overall if week is null/0, otherwise weekly
+                $promptType = (!empty($weekNumber) && $weekNumber > 0) ? 'coordinator_week' : 'coordinator_overall';
                 
-                if ($response['success']) {
-                    $summary = $this->openAIService->cleanText($response['summary'] ?? $response['content'] ?? '');
-                    if (!preg_match('/^For\s+this\s+week,\s+the\s+student/i', $summary)) {
-                        $weekLabel = $weekNumber ? "week {$weekNumber}" : "this week";
-                        $summary = "For {$weekLabel}, the student " . ltrim($summary);
+                // Build prompt for coordinator
+                $prompt = $this->coordinatorPromptBuilder->buildPrompt($activities, $learnings, '', $promptType);
+                // Increased timeout for better responses
+                $response = $this->openAIService->call($prompt, [
+                    'model' => 'gpt-4o-mini',
+                    'max_tokens' => 250,
+                    'temperature' => 0.6,
+                    'timeout' => 120,
+                ]);
+                
+                if ($response['success'] && $response['content']) {
+                    $summary = $this->openAIService->cleanText($response['content']);
+                    // Apply the correct prefix based on week
+                    // If week is null or 0, it means "overall"
+                    if (!empty($weekNumber) && $weekNumber > 0) {
+                        // Weekly case - ensure "For this week, the student" prefix
+                        if (!preg_match('/^For\s+(this\s+week|week\s+\d+),\s+the\s+student/i', $summary)) {
+                            $summary = "For this week, the student " . ltrim($summary);
+                        }
+                    } else {
+                        // Overall case - ensure "For overall, the student" prefix
+                        if (!preg_match('/^For\s+overall,\s+the\s+student/i', $summary)) {
+                            $summary = "For overall, the student " . ltrim($summary);
+                        }
                     }
                     $usedGPT = true;
                 } else {

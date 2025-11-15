@@ -114,7 +114,7 @@ class ChairpersonOpenAISummaryController extends Controller
                 'model' => 'gpt-4o-mini',
                 'max_tokens' => 3000,
                 'temperature' => 0.2,
-                'timeout' => 90,
+                'timeout' => 120,
             ]);
             
             if ($response['success'] && $response['content']) {

@@ -254,7 +254,7 @@ class ChairSummaryAdapter
                     'model' => 'gpt-4o-mini',
                     'max_tokens' => 4000, // Increased for better, more complete responses
                     'temperature' => 0.2,
-                    'timeout' => 60, // Increased timeout for better responses
+                    'timeout' => 120, // Increased timeout to 2 minutes for better responses
                 ]);
                 
                 if ($response['success'] && $response['content']) {
