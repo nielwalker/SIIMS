@@ -129,27 +129,27 @@ class CoordinatorPOPromptBuilder
      */
     private function buildSystemMessage(string $poContextGuide, string $weekLabel): string
     {
-        // OPTIMIZED: Shorter, more concise prompt for faster processing
         return "You are a BSIT internship evaluator. Identify Program Outcomes (POs) from weekly reports for a SINGLE STUDENT.
 
 PROGRAM OUTCOMES (PO1-PO15):
 {$poContextGuide}
 
 PO IDENTIFICATION PROCESS:
-1. Read activities/tasks and learnings from JSON data below
-2. For each activity/learning, identify which POs it demonstrates (one activity can show multiple POs)
-3. Check all 15 POs - if ANY evidence found, add to pos_hit with {\"po\": \"PO5\", \"reason\": \"...\"}
-4. Build pos_not_hit with ALL POs NOT in pos_hit
+1. Read ALL activities/learnings from JSON data below
+2. For each activity/learning, identify ALL POs it demonstrates (one activity can show multiple POs)
+3. Check all 15 POs - if ANY evidence found, add to pos_hit: [{\"po\": \"PO5\", \"reason\": \"...\"}]
+4. Build pos_not_hit with ALL POs (PO1-PO15) NOT in pos_hit
 5. Build po_context_hit and po_word_hit from pos_hit
-6. Generate ONE recommendation per PO in pos_not_hit
+6. Generate EXACTLY ONE recommendation per PO in pos_not_hit (same count)
 
 CRITICAL RULES:
 - Use ONLY JSON data (activities/learnings) for PO analysis - ignore summary text
-- Parse JSON, identify POs from activities/learnings
-- Build pos_hit with {\"po\": \"PO5\", \"reason\": \"...\"} for each achieved PO
-- Build pos_not_hit with ALL remaining POs (PO1-PO15 not in pos_hit)
-- Generate EXACTLY ONE recommendation per PO in pos_not_hit (same count)
-- Write recommendations in third-person, specific and actionable
+- Be GENEROUS - one activity can demonstrate multiple POs
+- pos_hit must contain objects with \"po\" and \"reason\" keys
+- Empty pos_hit only if activities/learnings are empty
+- NO limits on number of POs - identify ALL that apply
+- recommendations count MUST equal pos_not_hit count (ONE per PO)
+- Write recommendations in third-person (the student, they, them), specific and actionable
 
 QUICK PO MAPPING:
 - Orientation/attended → PO8, PO10, PO12, PO13
@@ -162,41 +162,17 @@ QUICK PO MAPPING:
 - Followed rules → PO2, PO12
 - Planned/scheduled → PO9
 - Researched/studied → PO13, PO14
-- Be GENEROUS - one activity can show multiple POs
 
-JSON RESPONSE REQUIREMENTS:
-- Return ONLY valid JSON - no explanations, no text before or after
-- Start with { and end with }
-- pos_hit MUST be an array of objects: [{\"po\": \"PO5\", \"reason\": \"...\"}, ...]
-- Do NOT return empty pos_hit array if activities/learnings exist
-- NOTE: Summary generation is handled separately by OpenAI summarization - DO NOT generate summaries
-- ALL keys must be present: corrected_activities, corrected_learnings, pos_hit, pos_not_hit, po_word_hit, po_context_hit, recommendations
-- CRITICAL: The recommendations array MUST contain exactly ONE recommendation for EACH PO in pos_not_hit (same count)
-
-OUTPUT FORMAT (MANDATORY - RETURN THIS EXACT JSON STRUCTURE):
+JSON RESPONSE FORMAT:
 {
   \"corrected_activities\": [\"activity 1\", \"activity 2\"],
   \"corrected_learnings\": [\"learning 1\", \"learning 2\"],
-  \"pos_hit\": [
-    {\"po\": \"PO5\", \"reason\": \"The student participated in orientation activities demonstrating teamwork\"},
-    {\"po\": \"PO6\", \"reason\": \"The student engaged in discussions showing communication skills\"}
-  ],
-  \"pos_not_hit\": [
-    {\"po\": \"PO1\", \"reason\": \"No evidence of mathematical or computational knowledge application\"},
-    {\"po\": \"PO6\", \"reason\": \"No evidence of integrating IT solutions\"},
-    {\"po\": \"PO7\", \"reason\": \"No evidence of using modern computing tools\"}
-  ],
+  \"pos_hit\": [{\"po\": \"PO5\", \"reason\": \"The student participated in orientation demonstrating teamwork\"}],
+  \"pos_not_hit\": [{\"po\": \"PO1\", \"reason\": \"No evidence of...\"}],
   \"po_word_hit\": [\"PO6\"],
-  \"po_context_hit\": [\"PO5\", \"PO6\", \"PO10\", \"PO13\"],
-  \"recommendations\": [
-    \"The student should engage in activities that require mathematical calculations and algorithm design to develop PO1 skills.\",
-    \"The student should work on integration projects and system configuration to develop PO6 competencies.\",
-    \"The student should explore and utilize various development tools and modern technologies to enhance PO7 technical skills.\"
-  ]
-  NOTE: Notice that pos_not_hit has 3 POs (PO1, PO6, PO7) and recommendations has 3 items - ONE per PO!
+  \"po_context_hit\": [\"PO5\", \"PO10\"],
+  \"recommendations\": [\"The student should... to achieve PO1.\"]
 }
-
-CRITICAL: The pos_hit array MUST contain objects with \"po\" and \"reason\" keys. Do NOT return empty arrays if activities/learnings exist.
 
 VALIDATION:
 - pos_hit has objects with \"po\" and \"reason\"
@@ -211,8 +187,7 @@ VALIDATION:
      */
     private function buildUserMessage(string $text, array $activities, array $learnings): string
     {
-        // OPTIMIZATION: Convert activities and learnings to JSON format for faster OpenAI processing
-        // This matches the chairperson implementation for consistency and performance
+        // OPTIMIZATION: Convert activities and learnings to JSON format
         $dataJson = [
             'activities' => !empty($activities) ? $activities : [],
             'learnings' => !empty($learnings) ? $learnings : [],
@@ -221,31 +196,19 @@ VALIDATION:
         ];
         
         $jsonData = json_encode($dataJson, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-        
         $summaryText = substr($text, 0, 500);
         
-        return "=== IGNORE THIS FOR PO ANALYSIS ===\n" .
-               "SUMMARY GENERATION DATA (for summary only, can vary):\n" .
-               $summaryText . "...\n\n" .
-               "=========================================\n\n" .
-               "=== USE THIS FOR PO ANALYSIS (RAW DATA FROM DATABASE - MANDATORY) ===\n" .
-               "STUDENT DATA (SINGLE STUDENT) - JSON FORMAT FOR FAST PROCESSING:\n" .
+        return "=== IGNORE FOR PO ANALYSIS ===\n" .
+               "SUMMARY DATA: " . $summaryText . "...\n\n" .
+               "=== USE FOR PO ANALYSIS (RAW DATA) ===\n" .
+               "STUDENT DATA (SINGLE STUDENT) - JSON:\n" .
                $jsonData . "\n\n" .
-               "CRITICAL INSTRUCTIONS:\n" .
-               "1. Parse the JSON data above - it contains activities and learnings from a SINGLE STUDENT\n" .
-               "2. For each activity/learning in the JSON arrays, identify which POs it demonstrates\n" .
-               "3. Build pos_hit array with objects: [{\"po\": \"PO5\", \"reason\": \"The student participated in orientation showing teamwork\"}, ...]\n" .
-               "4. If you see words like 'participated', 'orientation', 'discussed', 'learned', 'house rules', 'projects' - these DEMONSTRATE MULTIPLE POs\n" .
-               "5. pos_hit MUST NOT be empty if activities/learnings arrays are not empty\n" .
-               "6. Build pos_not_hit with ALL POs (PO1-PO15) that are NOT in pos_hit\n" .
-               "7. RECOMMENDATIONS - CRITICAL: After building pos_not_hit, you MUST:\n" .
-               "   a) Count how many POs are in pos_not_hit (e.g., 9 POs)\n" .
-               "   b) Create EXACTLY that many recommendations (e.g., 9 recommendations)\n" .
-               "   c) For EACH PO in pos_not_hit, write ONE recommendation\n" .
-               "   d) Example: If pos_not_hit = [PO6, PO7, PO9], then recommendations = [rec for PO6, rec for PO7, rec for PO9]\n" .
-               "   e) DO NOT return until recommendations count = pos_not_hit count!\n" .
-               "8. Return valid JSON with pos_hit populated based on the JSON DATA above\n" .
-               "Do NOT use the summary text for PO analysis.";
+               "INSTRUCTIONS:\n" .
+               "1. Parse JSON - identify POs from activities/learnings\n" .
+               "2. Build pos_hit: [{\"po\": \"PO5\", \"reason\": \"...\"}]\n" .
+               "3. Build pos_not_hit with ALL remaining POs (PO1-PO15)\n" .
+               "4. Generate ONE recommendation per PO in pos_not_hit (same count)\n" .
+               "5. Return valid JSON - ignore summary text.";
     }
 }
 
