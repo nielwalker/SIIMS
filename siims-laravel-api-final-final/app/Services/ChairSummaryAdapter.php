@@ -569,7 +569,7 @@ CONTEXTUAL INTERPRETATION METHODOLOGY:',
                        "6. Return valid JSON with pos_hit populated based on the RAW DATA above\n" .
                        "Do NOT use the summary text for PO analysis.";
                 
-                $resp = Http::withToken($apiKey)->timeout(90)->post('https://api.openai.com/v1/chat/completions', [
+                $resp = Http::withToken($apiKey)->timeout(120)->post('https://api.openai.com/v1/chat/completions', [
                     'model' => 'gpt-4o-mini',
                     'messages' => [
                         ['role' => 'system', 'content' => $sys],

@@ -54,12 +54,12 @@ class CoordinatorSummaryService
             // Build prompt using CoordinatorPOPromptBuilder
             $prompt = $this->promptBuilder->buildPOAnalysisPrompt($clean, $week, $activities, $learnings);
             
-            // Call OpenAI API with optimized settings for faster responses
+            // Call OpenAI API with increased timeout for better responses
             $response = $this->openAIService->call($prompt, [
                 'model' => 'gpt-4o-mini',
-                'max_tokens' => 2000, // Reduced from 3000 for faster responses
+                'max_tokens' => 2000,
                 'temperature' => 0.2,
-                'timeout' => 45, // Reduced timeout - should complete faster with less data
+                'timeout' => 120, // Increased timeout to 2 minutes for better responses
                 'top_p' => 0.95,
             ]);
 

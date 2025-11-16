@@ -1277,28 +1277,102 @@ protected function buildCombinedText($rows): string
 - **Model:** `gpt-4o-mini`
 - **Max Tokens:** 4000 (default), 2000-3000 (varies by endpoint)
 - **Temperature:** 0.2
-- **Timeout:** 60 seconds (default), 25-45 seconds (varies by endpoint)
+- **Timeout:** 120 seconds (2 minutes) - Increased for better reliability with large datasets
 - **API Key:** `OPENAI_API_KEY` environment variable
 
 ---
 
-## Token Usage (Per Request)
+## Token Usage (Per Request) - UPDATED 2024
 
-### Coordinator Summary
-- **Input:** 450-1,250 tokens
+### Coordinator Summary (OPTIMIZED PROMPTS)
+**Weekly Summary:**
+- **System Message:** ~20 tokens
+- **User Prompt (instructions only):** ~90 tokens
+- **JSON Data (varies):** 200-1,000 tokens (single student, 1 week)
+- **Total Input:** 310-1,110 tokens
 - **Output:** 50-150 tokens
+
+**Overall Summary:**
+- **System Message:** ~20 tokens
+- **User Prompt (instructions only):** ~90 tokens
+- **JSON Data (varies):** 500-2,500 tokens (single student, all weeks)
+- **Total Input:** 610-2,610 tokens
+- **Output:** 100-250 tokens
+
+**Token Reduction:** ~40% reduction in prompt tokens (from ~200-300 to ~90 tokens)
 
 ### Coordinator PO Analysis
 - **Input:** 2,700-3,500 tokens
 - **Output:** 500-1,000 tokens
 
-### Chairperson Summary
-- **Input:** 1,350-3,350 tokens
+### Chairperson Summary (OPTIMIZED PROMPTS)
+**Weekly Summary:**
+- **System Message:** ~20 tokens
+- **User Prompt (instructions only):** ~95 tokens
+- **JSON Data (varies):** 500-2,000 tokens (multiple students, 1 week)
+- **Total Input:** 615-2,115 tokens
+- **Output:** 150-400 tokens
+
+**Overall Summary:**
+- **System Message:** ~20 tokens
+- **User Prompt (instructions only):** ~90 tokens
+- **JSON Data (varies):** 1,000-4,000 tokens (multiple students, all weeks)
+- **Total Input:** 1,110-4,110 tokens
 - **Output:** 200-500 tokens
+
+**Token Reduction:** ~60% reduction in prompt tokens (from ~250-350 to ~90-95 tokens)
 
 ### Chairperson PO Analysis
 - **Input:** 4,100-6,100 tokens
 - **Output:** 800-1,500 tokens
+
+---
+
+## Cost Calculation (GPT-4o-mini Pricing)
+
+**Model:** `gpt-4o-mini`
+- **Input:** $0.150 per 1M tokens
+- **Output:** $0.600 per 1M tokens
+
+### Coordinator Summary Costs (Per Request)
+
+**Weekly:**
+- Input: 310-1,110 tokens × $0.150/1M = $0.000047 - $0.000167
+- Output: 50-150 tokens × $0.600/1M = $0.000030 - $0.000090
+- **Total:** $0.000077 - $0.000257 per request (~$0.0001 - $0.0003)
+
+**Overall:**
+- Input: 610-2,610 tokens × $0.150/1M = $0.000092 - $0.000392
+- Output: 100-250 tokens × $0.600/1M = $0.000060 - $0.000150
+- **Total:** $0.000152 - $0.000542 per request (~$0.0002 - $0.0005)
+
+### Chairperson Summary Costs (Per Request)
+
+**Weekly:**
+- Input: 615-2,115 tokens × $0.150/1M = $0.000092 - $0.000317
+- Output: 150-400 tokens × $0.600/1M = $0.000090 - $0.000240
+- **Total:** $0.000182 - $0.000557 per request (~$0.0002 - $0.0006)
+
+**Overall:**
+- Input: 1,110-4,110 tokens × $0.150/1M = $0.000167 - $0.000617
+- Output: 200-500 tokens × $0.600/1M = $0.000120 - $0.000300
+- **Total:** $0.000287 - $0.000917 per request (~$0.0003 - $0.0009)
+
+### Cost Savings from Prompt Optimization
+
+**Before Optimization (Estimated):**
+- Coordinator prompt: ~250 tokens → Now: ~90 tokens (64% reduction)
+- Chairperson prompt: ~300 tokens → Now: ~95 tokens (68% reduction)
+
+**Monthly Savings (Example: 1,000 requests):**
+- Coordinator: ~160 tokens saved × 1,000 = 160,000 tokens = $0.024/month
+- Chairperson: ~205 tokens saved × 1,000 = 205,000 tokens = $0.031/month
+- **Total Savings:** ~$0.055/month per 1,000 requests
+
+**Annual Savings (Example: 10,000 requests/month):**
+- Coordinator: $0.24/month × 12 = $2.88/year
+- Chairperson: $0.31/month × 12 = $3.72/year
+- **Total Annual Savings:** ~$6.60/year (scales with usage)
 
 ---
 

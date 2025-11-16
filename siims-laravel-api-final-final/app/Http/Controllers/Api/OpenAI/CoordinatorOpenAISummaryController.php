@@ -88,16 +88,32 @@ class CoordinatorOpenAISummaryController extends Controller
             $learnings = $this->openAIService->cleanDataArray($learnings);
             $assessment = $this->openAIService->cleanText($assessment);
 
-            // Build prompt using CoordinatorPromptBuilder
-            $prompt = $this->promptBuilder->buildPrompt($activities, $learnings, $assessment);
+            // Determine prompt type from request (default to weekly)
+            $promptType = $type === 'overall_summary' || $type === 'coordinator_overall' ? 'coordinator_overall' : 'coordinator_week';
 
-            $response = $this->openAIService->callSimple($prompt, 'gpt-4o-mini', 300, 0.6, 30);
+            // Build prompt using CoordinatorPromptBuilder
+            $prompt = $this->promptBuilder->buildPrompt($activities, $learnings, $assessment, $promptType);
+
+            $response = $this->openAIService->call($prompt, [
+                'model' => 'gpt-4o-mini',
+                'max_tokens' => 300,
+                'temperature' => 0.6,
+                'timeout' => 120,
+            ]);
             
-            if ($response['success']) {
-                $clean = $this->openAIService->cleanText($response['summary']);
-                // Ensure intro
-                if (!preg_match('/^For\s+this\s+week,\s+the\s+student/i', $clean)) {
-                    $clean = 'For this week, the student ' . ltrim($clean);
+            if ($response['success'] && $response['content']) {
+                $clean = $this->openAIService->cleanText($response['content']);
+                // Ensure correct prefix based on type
+                if ($promptType === 'coordinator_overall') {
+                    // Overall case - ensure "For overall, the student" prefix
+                    if (!preg_match('/^For\s+overall,\s+the\s+student/i', $clean)) {
+                        $clean = 'For overall, the student ' . ltrim($clean);
+                    }
+                } else {
+                    // Weekly case - ensure "For this week, the student" prefix
+                    if (!preg_match('/^For\s+this\s+week,\s+the\s+student/i', $clean)) {
+                        $clean = 'For this week, the student ' . ltrim($clean);
+                    }
                 }
                 
                 // EVALUATION: Compare OpenAI summary against raw database data

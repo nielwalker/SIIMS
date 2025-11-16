@@ -56,40 +56,20 @@ class ChairSummaryPromptBuilder
     {
         $system = "You are an academic writing expert. Create a polished, professional summary for an internship program report.";
         
-        $user = "STUDENT DATA (JSON FORMAT FOR FAST PROCESSING): {$jsonData}
+        $user = "STUDENT DATA (JSON FORMAT): {$jsonData}
 
-INSTRUCTIONS:
-- Parse the JSON data above to extract activities and learnings arrays
-- Use the activities and learnings from the JSON to create the summary
+TASK: Parse the JSON to extract activities and learnings, then create a summary.
 
-WRITING REQUIREMENTS:
+REQUIREMENTS:
 1. Begin EXACTLY with: 'For overall, the students '
-2. Write EXCLUSIVELY in third person (students, they, their, them) - NEVER use first person (I, me, my, we, us, our)
-3. Use sophisticated vocabulary and complex sentence structures
-4. Ensure perfect grammar, punctuation, and sentence flow
-5. Create logical connections between activities and outcomes
-6. Use transitional phrases for smooth flow
-7. Maintain professional, formal language throughout
-8. Write as a single, well-crafted paragraph
-9. Avoid repetition and redundancy
-10. Use varied sentence structures (simple, compound, complex)
+2. Write EXCLUSIVELY in third person (students, they, their, them) - NEVER first person (I, me, my, we, us, our)
+3. Convert first-person to third person: 'I learned' → 'students learned', 'I gained' → 'students gained', etc.
+4. Use sophisticated vocabulary, complex sentence structures, and varied syntax (simple, compound, complex)
+5. Create logical connections between activities and outcomes using transitional phrases
+6. Write as a single, well-crafted paragraph with perfect grammar and flow
+7. Include specific details, use active voice, and end with a strong conclusion
 
-CRITICAL: Convert any first-person language to third person:
-- 'I learned' → 'students learned' or 'they learned'
-- 'I was able to' → 'students were able to' or 'they were able to'
-- 'I became' → 'students became' or 'they became'
-- 'I gained' → 'students gained' or 'they gained'
-- 'I developed' → 'students developed' or 'they developed'
-
-STYLE GUIDELINES:
-- Use active voice where appropriate
-- Include specific details from the data
-- Create a narrative that flows logically
-- Use academic connectors (furthermore, moreover, consequently, etc.)
-- Ensure each sentence builds upon the previous one
-- End with a strong concluding statement
-
-Generate a single, polished paragraph that reads like professional academic writing.";
+Generate a polished, professional academic paragraph.";
 
         return [
             ['role' => 'system', 'content' => $system],
@@ -105,31 +85,20 @@ Generate a single, polished paragraph that reads like professional academic writ
     {
         $system = "You are an academic writing expert. Create a polished, professional weekly summary for an internship program report.";
         
-        $user = "STUDENT DATA (JSON FORMAT FOR FAST PROCESSING): {$jsonData}
+        $user = "STUDENT DATA (JSON FORMAT): {$jsonData}
 
-INSTRUCTIONS:
-- Parse the JSON data above to extract activities and learnings arrays
-- Use the activities and learnings from the JSON to create the summary
+TASK: Parse the JSON to extract activities and learnings, then create a summary.
 
-WRITING REQUIREMENTS:
+REQUIREMENTS:
 1. Begin EXACTLY with: 'For this week, those students '
-2. Write EXCLUSIVELY in third person (students, they, their, them) — NEVER use first person (I, me, my, we, us, our)
+2. Write EXCLUSIVELY in third person (students, they, their, them) - NEVER first person (I, me, my, we, us, our)
 3. Convert list-like fragments into fluent sentences; avoid repeating labels like 'activities' or 'learnings'
 4. Produce 2–3 coherent sentences that synthesize ACTIVITIES and LEARNING OUTCOMES into a narrative
-5. Ensure perfect grammar, punctuation, and sentence flow with academic tone
-6. Create logical connections between activities and outcomes using transitional phrases
-7. Maintain professional, formal language throughout
-8. Avoid redundancy and do not echo the inputs verbatim
+5. Use perfect grammar, academic tone, transitional phrases, and logical flow
+6. Include specific details, use active voice, and end with a strong conclusion
+7. Avoid redundancy and do not echo inputs verbatim
 
-STYLE GUIDELINES:
-- Use active voice where appropriate
-- Include specific details from the data
-- Create a narrative that flows logically
-- Use academic connectors (furthermore, moreover, consequently, etc.)
-- Ensure each sentence builds upon the previous one
-- End with a strong concluding statement
-
-Generate a single, polished paragraph that reads like professional academic writing.";
+Generate a polished, professional academic paragraph.";
 
         return [
             ['role' => 'system', 'content' => $system],

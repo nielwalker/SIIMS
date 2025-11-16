@@ -20,7 +20,7 @@ class OpenAIService
     private const DEFAULT_MODEL = 'gpt-4o-mini';
     private const DEFAULT_MAX_TOKENS = 4000; // Increased for better responses
     private const DEFAULT_TEMPERATURE = 0.2;
-    private const DEFAULT_TIMEOUT = 60; // Increased timeout for better responses
+    private const DEFAULT_TIMEOUT = 120; // Increased timeout to 2 minutes for better responses
 
     /**
      * Call OpenAI API with the given parameters
@@ -297,7 +297,7 @@ class OpenAIService
         string $model = 'gpt-4o-mini',
         int $maxTokens = 500,
         float $temperature = 0.7,
-        int $timeout = 30
+        int $timeout = 90
     ): array {
         $result = $this->call($prompt, [
             'model' => $model,

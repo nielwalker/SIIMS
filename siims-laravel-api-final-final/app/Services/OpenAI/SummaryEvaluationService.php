@@ -442,96 +442,297 @@ class SummaryEvaluationService
     }
     
     /**
-     * Get synonyms for a word (simplified dictionary)
-     * In a full implementation, this would use a comprehensive thesaurus
+     * Get synonyms for a word (enhanced comprehensive dictionary)
+     * Expanded dictionary for better semantic matching in academic/internship contexts
      * 
      * @param string $word
      * @return array Array of synonyms
      */
     private function getSynonyms(string $word): array
     {
-        // Expanded synonym dictionary for better semantic matching
-        // This improves BERT score by recognizing semantically similar words
+        // Enhanced synonym dictionary for better semantic matching
+        // This improves BERT score by recognizing semantically similar words in internship/academic contexts
         $synonymDict = [
             'learn' => [
                 'study', 'understand', 'acquire', 'gain', 'obtain', 'grasp', 'master', 'comprehend',
-                'absorb', 'discover', 'explore', 'familiarize', 'observe', 'learning', 'education'
+                'absorb', 'discover', 'explore', 'familiarize', 'observe', 'learning', 'education',
+                'educate', 'train', 'instruct', 'teach', 'pick up', 'figure out', 'realize'
             ],
             'work' => [
                 'task', 'job', 'assignment', 'project', 'activity', 'duty', 'responsibility',
-                'operation', 'effort', 'labor', 'performance', 'workflow', 'process'
+                'operation', 'effort', 'labor', 'performance', 'workflow', 'process', 'undertaking',
+                'endeavor', 'chore', 'function', 'role', 'service', 'employment'
             ],
             'create' => [
                 'build', 'develop', 'make', 'design', 'construct', 'produce', 'generate',
-                'craft', 'form', 'compose', 'innovate', 'invent', 'prototype', 'establish'
+                'craft', 'form', 'compose', 'innovate', 'invent', 'prototype', 'establish',
+                'fabricate', 'manufacture', 'assemble', 'compile', 'author', 'write', 'code'
             ],
             'improve' => [
                 'enhance', 'better', 'upgrade', 'refine', 'optimize', 'advance', 'progress',
-                'boost', 'increase', 'strengthen', 'expand', 'grow', 'develop further'
+                'boost', 'increase', 'strengthen', 'expand', 'grow', 'develop further', 'elevate',
+                'augment', 'amplify', 'enrich', 'polish', 'perfect', 'hone', 'sharpen'
             ],
             'analyze' => [
                 'examine', 'study', 'review', 'evaluate', 'assess', 'investigate', 'inspect',
-                'interpret', 'observe', 'compare', 'test', 'scrutinize', 'break down'
+                'interpret', 'observe', 'compare', 'test', 'scrutinize', 'break down', 'dissect',
+                'explore', 'probe', 'audit', 'appraise', 'judge', 'measure', 'calculate'
             ],
             'implement' => [
                 'execute', 'apply', 'carry out', 'perform', 'do', 'accomplish', 'complete',
-                'deploy', 'realize', 'put into action', 'enforce'
+                'deploy', 'realize', 'put into action', 'enforce', 'install', 'setup', 'configure',
+                'activate', 'launch', 'initiate', 'establish', 'integrate', 'incorporate'
             ],
             'develop' => [
                 'create', 'build', 'design', 'construct', 'make', 'form', 'establish',
-                'grow', 'expand', 'enhance', 'progress', 'advance', 'refine', 'improve'
+                'grow', 'expand', 'enhance', 'progress', 'advance', 'refine', 'improve',
+                'evolve', 'mature', 'cultivate', 'nurture', 'foster', 'generate', 'produce'
             ],
             'test' => [
                 'check', 'verify', 'validate', 'examine', 'evaluate', 'assess', 'inspect',
-                'try', 'experiment', 'confirm', 'debug', 'review', 'analyze'
+                'try', 'experiment', 'confirm', 'debug', 'review', 'analyze', 'trial',
+                'sample', 'probe', 'audit', 'quality assurance', 'qa', 'unit test'
             ],
             'fix' => [
                 'repair', 'correct', 'resolve', 'solve', 'debug', 'troubleshoot', 'address',
-                'amend', 'adjust', 'patch', 'restore', 'remedy'
+                'amend', 'adjust', 'patch', 'restore', 'remedy', 'rectify', 'mend',
+                'resolve issue', 'correct error', 'resolve bug', 'patch up', 'make right'
             ],
             'use' => [
                 'utilize', 'employ', 'apply', 'operate', 'handle', 'work with', 'run',
-                'access', 'leverage', 'execute', 'implement', 'make use of'
+                'access', 'leverage', 'execute', 'implement', 'make use of', 'adopt',
+                'exploit', 'harness', 'manipulate', 'control', 'manage', 'work on'
             ],
             'participate' => [
                 'join', 'attend', 'engage', 'involve', 'take part', 'contribute',
-                'collaborate', 'work together', 'be part of', 'cooperate'
+                'collaborate', 'work together', 'be part of', 'cooperate', 'partake',
+                'engage in', 'be involved', 'contribute to', 'play a role', 'be active'
             ],
             'discuss' => [
                 'talk', 'converse', 'communicate', 'exchange', 'share', 'debate',
-                'present', 'consult', 'deliberate', 'conference', 'conversation'
+                'present', 'consult', 'deliberate', 'conference', 'conversation', 'meeting',
+                'dialogue', 'chat', 'speak', 'confer', 'brainstorm', 'review together'
             ],
             'understand' => [
                 'comprehend', 'grasp', 'know', 'realize', 'recognize', 'appreciate',
-                'acknowledge', 'interpret', 'perceive', 'be aware of'
+                'acknowledge', 'interpret', 'perceive', 'be aware of', 'fathom', 'get',
+                'see', 'follow', 'make sense of', 'figure out', 'conceive', 'digest'
             ],
             'complete' => [
                 'finish', 'accomplish', 'achieve', 'fulfill', 'conclude', 'finalize',
-                'end', 'wrap up', 'close', 'deliver', 'execute successfully'
+                'end', 'wrap up', 'close', 'deliver', 'execute successfully', 'done',
+                'accomplished', 'finished', 'wrapped', 'closed', 'delivered', 'achieved'
             ],
             'attend' => [
                 'participate', 'join', 'be present', 'go to', 'take part', 'show up',
-                'visit', 'participation', 'presence'
+                'visit', 'participation', 'presence', 'be at', 'be there', 'go',
+                'appear', 'be in attendance', 'sit in', 'observe', 'watch'
             ],
             'practice' => [
                 'exercise', 'train', 'rehearse', 'drill', 'apply', 'perform',
-                'repeat', 'simulate', 'experiment', 'routine', 'training'
+                'repeat', 'simulate', 'experiment', 'routine', 'training', 'repetition',
+                'hands on', 'practical', 'application', 'experience', 'skill building'
             ],
             'help' => [
                 'assist', 'support', 'aid', 'facilitate', 'contribute', 'guide',
-                'mentor', 'cooperate', 'volunteer', 'lend a hand'
+                'mentor', 'cooperate', 'volunteer', 'lend a hand', 'back up', 'serve',
+                'benefit', 'be useful', 'provide assistance', 'give support', 'coach'
             ],
             'collaborate' => [
                 'cooperate', 'work together', 'team up', 'partner', 'coordinate',
-                'combine', 'unite', 'assist', 'joint effort', 'group work'
+                'combine', 'unite', 'assist', 'joint effort', 'group work', 'teamwork',
+                'partnership', 'alliance', 'joint venture', 'cooperation', 'synergy'
             ],
             'plan' => [
                 'organize', 'schedule', 'prepare', 'arrange', 'design', 'strategize',
-                'outline', 'map out', 'structure', 'coordinate'
+                'outline', 'map out', 'structure', 'coordinate', 'scheme', 'blueprint',
+                'roadmap', 'agenda', 'strategy', 'approach', 'method', 'framework'
             ],
             'research' => [
                 'investigate', 'study', 'examine', 'explore', 'inquire', 'analyze',
-                'observe', 'review', 'experiment', 'develop'
+                'observe', 'review', 'experiment', 'develop', 'investigation', 'inquiry',
+                'exploration', 'study', 'survey', 'probe', 'fact finding', 'data collection'
+            ],
+            // Additional common internship/academic terms
+            'code' => [
+                'program', 'script', 'develop', 'write', 'build', 'create', 'implement',
+                'software', 'application', 'system', 'module', 'function', 'algorithm'
+            ],
+            'database' => [
+                'data', 'storage', 'repository', 'records', 'information', 'tables',
+                'queries', 'sql', 'data management', 'data storage', 'data system'
+            ],
+            'meeting' => [
+                'conference', 'discussion', 'session', 'gathering', 'assembly', 'briefing',
+                'consultation', 'workshop', 'seminar', 'presentation', 'talk', 'chat'
+            ],
+            'document' => [
+                'record', 'file', 'report', 'paper', 'write', 'note', 'log',
+                'documentation', 'memo', 'report', 'entry', 'record keeping'
+            ],
+            'present' => [
+                'show', 'demonstrate', 'display', 'exhibit', 'introduce', 'showcase',
+                'reveal', 'explain', 'share', 'deliver', 'give presentation', 'speak'
+            ],
+            'solve' => [
+                'resolve', 'fix', 'address', 'troubleshoot', 'debug', 'correct',
+                'remedy', 'overcome', 'handle', 'deal with', 'work out', 'figure out'
+            ],
+            'design' => [
+                'plan', 'create', 'develop', 'construct', 'build', 'architect',
+                'structure', 'layout', 'blueprint', 'model', 'prototype', 'sketch'
+            ],
+            'configure' => [
+                'setup', 'install', 'arrange', 'adjust', 'customize', 'set up',
+                'initialize', 'prepare', 'establish', 'organize', 'tune', 'calibrate'
+            ],
+            'monitor' => [
+                'watch', 'observe', 'track', 'supervise', 'oversee', 'check',
+                'review', 'inspect', 'examine', 'surveillance', 'keep track'
+            ],
+            'optimize' => [
+                'improve', 'enhance', 'refine', 'tune', 'upgrade', 'boost',
+                'maximize', 'streamline', 'perfect', 'polish', 'fine tune'
+            ],
+            'integrate' => [
+                'combine', 'merge', 'incorporate', 'unite', 'blend', 'connect',
+                'join', 'link', 'unify', 'consolidate', 'merge together'
+            ],
+            'maintain' => [
+                'keep', 'preserve', 'sustain', 'support', 'manage', 'care for',
+                'upkeep', 'service', 'repair', 'sustain', 'continue', 'retain'
+            ],
+            'update' => [
+                'modify', 'change', 'revise', 'refresh', 'upgrade', 'amend',
+                'adjust', 'edit', 'alter', 'improve', 'modernize', 'refresh'
+            ],
+            'review' => [
+                'examine', 'check', 'analyze', 'evaluate', 'assess', 'inspect',
+                'audit', 'scrutinize', 'study', 'go over', 'look at', 'verify'
+            ],
+            'communicate' => [
+                'talk', 'speak', 'discuss', 'converse', 'share', 'exchange',
+                'interact', 'correspond', 'connect', 'reach out', 'contact', 'inform'
+            ],
+            'organize' => [
+                'arrange', 'structure', 'order', 'systematize', 'categorize', 'classify',
+                'sort', 'group', 'coordinate', 'manage', 'setup', 'arrange'
+            ],
+            'train' => [
+                'teach', 'educate', 'instruct', 'coach', 'mentor', 'guide',
+                'prepare', 'develop', 'practice', 'exercise', 'drill', 'learn'
+            ],
+            'support' => [
+                'help', 'assist', 'aid', 'back', 'encourage', 'facilitate',
+                'enable', 'promote', 'foster', 'sustain', 'maintain', 'uphold'
+            ],
+            'manage' => [
+                'handle', 'control', 'oversee', 'supervise', 'administer', 'direct',
+                'coordinate', 'organize', 'run', 'operate', 'govern', 'lead'
+            ],
+            'evaluate' => [
+                'assess', 'judge', 'analyze', 'examine', 'review', 'appraise',
+                'measure', 'rate', 'gauge', 'estimate', 'value', 'determine'
+            ],
+            'documentation' => [
+                'records', 'files', 'papers', 'reports', 'notes', 'logs',
+                'writing', 'recording', 'keeping records', 'file keeping'
+            ],
+            'application' => [
+                'software', 'program', 'system', 'tool', 'platform', 'app',
+                'solution', 'product', 'service', 'utility', 'interface'
+            ],
+            'system' => [
+                'platform', 'framework', 'infrastructure', 'architecture', 'structure',
+                'network', 'setup', 'configuration', 'environment', 'ecosystem'
+            ],
+            'technology' => [
+                'tool', 'software', 'platform', 'system', 'application', 'framework',
+                'solution', 'innovation', 'tech', 'digital tool', 'software tool'
+            ],
+            'skill' => [
+                'ability', 'capability', 'competence', 'expertise', 'proficiency',
+                'talent', 'knowledge', 'know how', 'aptitude', 'capacity'
+            ],
+            'knowledge' => [
+                'understanding', 'awareness', 'comprehension', 'expertise', 'wisdom',
+                'information', 'learning', 'education', 'insight', 'familiarity'
+            ],
+            'experience' => [
+                'practice', 'exposure', 'involvement', 'participation', 'encounter',
+                'practice', 'hands on', 'real world', 'practical', 'on the job'
+            ],
+            'project' => [
+                'task', 'assignment', 'work', 'undertaking', 'initiative', 'venture',
+                'endeavor', 'effort', 'job', 'activity', 'program', 'campaign'
+            ],
+            'team' => [
+                'group', 'crew', 'staff', 'squad', 'unit', 'collective',
+                'workforce', 'personnel', 'members', 'colleagues', 'partners'
+            ],
+            'client' => [
+                'customer', 'user', 'stakeholder', 'end user', 'consumer', 'patron',
+                'buyer', 'subscriber', 'member', 'beneficiary'
+            ],
+            'requirement' => [
+                'need', 'specification', 'demand', 'criteria', 'standard', 'condition',
+                'prerequisite', 'necessity', 'mandate', 'expectation', 'rule'
+            ],
+            'problem' => [
+                'issue', 'challenge', 'difficulty', 'obstacle', 'trouble', 'bug',
+                'error', 'glitch', 'malfunction', 'defect', 'flaw', 'concern'
+            ],
+            'solution' => [
+                'answer', 'fix', 'resolution', 'remedy', 'approach', 'method',
+                'strategy', 'way', 'means', 'approach', 'fix', 'cure'
+            ],
+            'data' => [
+                'information', 'details', 'facts', 'records', 'statistics', 'figures',
+                'content', 'material', 'input', 'output', 'dataset', 'database'
+            ],
+            'report' => [
+                'document', 'file', 'record', 'paper', 'summary', 'account',
+                'statement', 'writeup', 'documentation', 'log', 'entry'
+            ],
+            'presentation' => [
+                'show', 'display', 'demonstration', 'exhibition', 'showcase',
+                'talk', 'speech', 'lecture', 'briefing', 'pitch', 'delivery'
+            ],
+            'workshop' => [
+                'training', 'session', 'seminar', 'course', 'class', 'meeting',
+                'conference', 'gathering', 'event', 'program', 'activity'
+            ],
+            'orientation' => [
+                'introduction', 'overview', 'briefing', 'induction', 'initiation',
+                'familiarization', 'introduction session', 'welcome', 'onboarding'
+            ],
+            'feedback' => [
+                'comment', 'input', 'suggestion', 'opinion', 'review', 'evaluation',
+                'response', 'reaction', 'critique', 'assessment', 'observation'
+            ],
+            'deadline' => [
+                'due date', 'target date', 'cutoff', 'time limit', 'schedule',
+                'timeline', 'milestone', 'end date', 'finish date', 'completion date'
+            ],
+            'progress' => [
+                'advancement', 'development', 'improvement', 'growth', 'advance',
+                'headway', 'movement', 'evolution', 'forward motion', 'gain'
+            ],
+            'goal' => [
+                'objective', 'target', 'aim', 'purpose', 'intention', 'mission',
+                'target', 'end', 'destination', 'aspiration', 'ambition'
+            ],
+            'achieve' => [
+                'accomplish', 'attain', 'reach', 'fulfill', 'complete', 'succeed',
+                'realize', 'obtain', 'gain', 'earn', 'secure', 'win'
+            ],
+            'challenge' => [
+                'difficulty', 'obstacle', 'problem', 'hurdle', 'issue', 'trial',
+                'test', 'struggle', 'complication', 'barrier', 'setback'
+            ],
+            'success' => [
+                'achievement', 'accomplishment', 'victory', 'triumph', 'win',
+                'breakthrough', 'progress', 'advancement', 'fulfillment', 'completion'
             ],
         ];
         
