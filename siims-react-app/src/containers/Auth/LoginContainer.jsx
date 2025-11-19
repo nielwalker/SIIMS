@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import useFormData from "../../_global/hooks/useFormData";
 import { useAuth } from "../../hooks/useAuth";
@@ -48,6 +48,14 @@ const LoginContainer = () => {
    */
   const [errors, setErrors] = useState({});
 
+  useEffect(() => {
+    const storedError = localStorage.getItem("loginError");
+    if (storedError) {
+      setErrors({ _general: storedError });
+      localStorage.removeItem("loginError");
+    }
+  }, []);
+
   /**
    *
    *
@@ -59,6 +67,7 @@ const LoginContainer = () => {
    */
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrors({});
 
     // Prepare the payload with the login information from the form
     const payload = formData;

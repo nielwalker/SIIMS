@@ -98,13 +98,20 @@ axiosClient.interceptors.response.use(
 
 // Handle 401 errors (Unauthorized)
 function handleUnauthorizedError(response, config) {
+  const url = typeof config?.url === "string" ? config.url : "";
+  const isLoginRequest = url.includes("/api/v1/auth/login");
   const errorMessage =
     response.data.message || "Unauthorized access. Please log in again.";
+
+  // Allow login form to handle 401 errors itself
+  if (isLoginRequest) {
+    return;
+  }
 
   // When backend truly says unauthenticated, log out; otherwise just notify
   const msg = String(errorMessage || "").toLowerCase();
   const isUnauthenticated = msg.includes("unauthenticated");
-  const isAuthEndpoint = typeof config?.url === 'string' && config.url.includes('/api/v1/auth');
+  const isAuthEndpoint = url.includes("/api/v1/auth");
 
   if (isUnauthenticated || isAuthEndpoint) {
     // Show alert with error message

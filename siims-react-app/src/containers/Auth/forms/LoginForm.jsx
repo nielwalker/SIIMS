@@ -10,6 +10,11 @@ const LoginForm = ({ formData, handleChange, handleSubmit, errors }) => {
     <>
       {/* Login Form */}
       <form method="post" onSubmit={handleSubmit} className="mt-3 space-y-4">
+        {errors._general && (
+          <p className="text-sm text-red-600 bg-red-100 border border-red-200 rounded-md px-3 py-2">
+            {errors._general}
+          </p>
+        )}
         {/* User ID Input Field */}
         <Field className={"text-sm flex flex-col gap-2"}>
           <Label htmlFor="id" className={"text-white font-bold"}>

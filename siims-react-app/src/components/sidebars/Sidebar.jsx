@@ -60,6 +60,7 @@ export default function Sidebar({
 
   // Auth logout
   const { logout, roles } = useAuth();
+  const safeRoles = Array.isArray(roles) ? roles : [];
 
   return (
     <aside className="h-screen">
@@ -93,7 +94,7 @@ export default function Sidebar({
           <ul className="flex-1 px-3 list-none">
             {children}
 
-            {roles.length > 1 && (
+            {safeRoles.length > 1 && (
               <NavLink
                 to={"/auth"}
                 className={`mt-10 relative flex items-center py-2 px-3 my-1 font-medium rounded-md cursor-pointer transition-colors group hover:bg-blue-700 text-gray-50`}

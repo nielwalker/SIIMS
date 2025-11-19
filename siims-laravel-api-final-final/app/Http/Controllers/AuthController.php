@@ -151,7 +151,7 @@ class AuthController extends Controller
 
         // Return invalid credential response
         return response()->json([
-            'message' => 'The provided credentials do not match our records.'
+            'message' => 'Credentials Doesnt match on the Records'
         ], 401);
     }
 

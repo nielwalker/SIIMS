@@ -1,5 +1,13 @@
 // Libraries
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 
 // Custom Hooks
@@ -21,7 +29,11 @@ const AuthContext = createContext({
   logout: async () => {},
 });
 
-// Auth Provider Component
+const AUTO_LOGOUT_MINUTES = Number(import.meta.env.VITE_AUTO_LOGOUT_MINUTES ?? 15);
+const AUTO_LOGOUT_MS = AUTO_LOGOUT_MINUTES * 60 * 1000;
+const AUTO_LOGOUT_MESSAGE =
+  "For security purposes, your session timed out due to inactivity. Please sign in again.";
+
 export const AuthProvider = ({ children }) => {
   // Loading State
   const [loading, setLoading] = useState(false);
@@ -30,6 +42,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useLocalStorage("user", null);
   const [roles, setRoles] = useLocalStorage("roles", null);
   const [token, setToken] = useLocalStorage("ACCESS_TOKEN", null);
+
+  const logoutTimerRef = useRef(null);
 
   // Function to authenticate the user
   const login = async (payload = {}, setLoading, navigate) => {
@@ -67,7 +81,9 @@ export const AuthProvider = ({ children }) => {
           return data.errors; // field validation
         }
         if (status === 401) {
-          return { password: [data?.message || "Invalid credentials."] };
+          const message =
+            data?.message || "Credentials Doesnt match on the Records";
+          return { _general: message };
         }
         return { _error: data?.message || "Login failed." };
       }
@@ -78,34 +94,77 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Function to log out the authenticated user
-  const logout = async () => {
-    // Set Loading State
-    setLoading(true);
-    try {
-      await axiosClient
-        .post("/api/v1/auth/logout")
-        .then((response) => {
-          // console.log("Successful Log Out");
+  const logout = useCallback(
+    async (arg) => {
+      let options = {};
+      if (arg && typeof arg === "object" && "preventDefault" in arg) {
+        arg.preventDefault();
+      } else if (arg) {
+        options = arg;
+      }
 
-          // Remove Local Storages
-          localStorage.removeItem("ACCESS_TOKEN");
-          localStorage.removeItem("user");
-          localStorage.removeItem("roles");
+      const { reason } = options;
+      if (reason) {
+        localStorage.setItem("loginError", reason);
+      } else {
+        localStorage.removeItem("loginError");
+      }
 
-          window.location.href = "/login";
-        })
-        .catch((error) => {
-          console.error("Logout failed:", error);
+      setLoading(true);
+      try {
+        await axiosClient.post("/api/v1/auth/logout");
+      } catch (error) {
+        console.error("Logout failed:", error);
+      } finally {
+        if (logoutTimerRef.current) {
+          clearTimeout(logoutTimerRef.current);
+          logoutTimerRef.current = null;
+        }
 
-          // Optionally handle errors, e.g., display a toast notification
-          throw error;
-        });
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
+        localStorage.removeItem("ACCESS_TOKEN");
+        localStorage.removeItem("user");
+        localStorage.removeItem("roles");
+        setUser(null);
+        setToken(null);
+        setRoles(null);
+        setLoading(false);
+        window.location.href = "/login";
+      }
+    },
+    [setLoading, setRoles, setToken, setUser]
+  );
+
+  // Auto logout when inactive
+  useEffect(() => {
+    const activityEvents = ["mousemove", "keydown", "click", "scroll", "touchstart"];
+
+    const resetTimer = () => {
+      if (!token) {
+        return;
+      }
+
+      if (logoutTimerRef.current) {
+        clearTimeout(logoutTimerRef.current);
+      }
+
+      logoutTimerRef.current = setTimeout(() => {
+        logout({ reason: AUTO_LOGOUT_MESSAGE });
+      }, AUTO_LOGOUT_MS);
+    };
+
+    if (token) {
+      activityEvents.forEach((event) => window.addEventListener(event, resetTimer));
+      resetTimer();
     }
-  };
+
+    return () => {
+      activityEvents.forEach((event) => window.removeEventListener(event, resetTimer));
+      if (logoutTimerRef.current) {
+        clearTimeout(logoutTimerRef.current);
+        logoutTimerRef.current = null;
+      }
+    };
+  }, [token, logout]);
 
   // Use Memo
   const value = useMemo(
@@ -116,7 +175,7 @@ export const AuthProvider = ({ children }) => {
       login,
       logout,
     }),
-    [token]
+    [login, logout, roles, token, user]
   );
 
   return (

@@ -21,11 +21,12 @@ export default function SidebarLayout({
   // Open use location
   const location = useLocation();
 
+  const safeUser = user ?? {};
   // Combine into full name
-  const name = `${user["first_name"] ?? ""} ${user["middle_name"] ?? ""} ${
-    user["last_name"] ?? ""
-  }`;
-  const email = user["email"];
+  const name = `${safeUser["first_name"] ?? ""} ${safeUser["middle_name"] ?? ""} ${
+    safeUser["last_name"] ?? ""
+  }`.trim();
+  const email = safeUser["email"] ?? "";
 
   return (
     <div className={className}>
