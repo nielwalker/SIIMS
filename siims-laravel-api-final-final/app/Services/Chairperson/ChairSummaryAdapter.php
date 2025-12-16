@@ -267,9 +267,11 @@ class ChairSummaryAdapter
                 
                 // Store OpenAI response for browser console logging
                 $debugData['summary_openai_response'] = $response;
+                $debugData['summarize_result'] = $response['content'] ?? null;
                 
                 if ($response['success'] && $response['content']) {
                     $summary = $this->openAIService->cleanText($response['content']);
+                    $debugData['summarize_result'] = $summary;
                     // Remove any duplicate prefixes that OpenAI might have added
                     // The prompt builder already instructs OpenAI to add prefix, but we ensure consistency here
                     $summary = preg_replace('/^For\s+(this\s+week|week\s+\d+),\s+those\s+students\s+/i', '', $summary);

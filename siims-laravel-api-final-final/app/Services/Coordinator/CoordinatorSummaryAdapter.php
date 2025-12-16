@@ -120,9 +120,11 @@ class CoordinatorSummaryAdapter
                 
                 // Store OpenAI response for browser console logging
                 $debugData['summary_openai_response'] = $response;
+                $debugData['summarize_result'] = $response['content'] ?? null;
                 
                 if ($response['success'] && $response['content']) {
                     $summary = $this->openAIService->cleanText($response['content']);
+                    $debugData['summarize_result'] = $summary;
                     // Apply the correct prefix based on week
                     // If week is null or 0, it means "overall"
                     if (!empty($weekNumber) && $weekNumber > 0) {

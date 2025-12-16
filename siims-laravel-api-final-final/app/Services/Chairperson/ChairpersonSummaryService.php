@@ -73,9 +73,11 @@ class ChairpersonSummaryService
             
             // Store PO analysis OpenAI response for browser console logging
             $debugData['po_analysis_openai_response'] = $response;
+            $debugData['response_result'] = $response['content'] ?? null;
 
             if ($response['success'] && $response['content']) {
                 $rawContent = $response['content'];
+                $debugData['response_result'] = $rawContent;
                 
                 // Log raw OpenAI response for debugging (first 500 chars)
                 Log::info('ChairpersonSummaryService: Raw OpenAI response preview', [
@@ -94,6 +96,9 @@ class ChairpersonSummaryService
                     'poTypes' => $poTypes,
                     'recommendations' => $recommendations,
                 ];
+                
+                // Store only POs hit (exclude POs not hit)
+                $debugData['pos_hit_only'] = $pos['hit'] ?? [];
                 
                 // Log extracted recommendations for debugging
                 Log::info('ChairpersonSummaryService: Extracted recommendations', [

@@ -73,9 +73,11 @@ class CoordinatorSummaryService
             
             // Store PO analysis OpenAI response for browser console logging
             $debugData['po_analysis_openai_response'] = $response;
+            $debugData['response_result'] = $response['content'] ?? null;
 
             if ($response['success'] && $response['content']) {
                 $rawContent = $response['content'];
+                $debugData['response_result'] = $rawContent;
                 
                 // Extract PO analysis from response
                 $pos = $this->extractPosArrays($rawContent);
@@ -88,6 +90,9 @@ class CoordinatorSummaryService
                     'poTypes' => $poTypes,
                     'recommendations' => $recommendations,
                 ];
+                
+                // Store only POs hit (exclude POs not hit)
+                $debugData['pos_hit_only'] = $pos['hit'] ?? [];
                 
                 // Ensure all 15 POs are accounted for
                 $allPOs = array_map(function($i) {

@@ -130,36 +130,32 @@ const HomeRemotePage = ({ authorizeRole }) => {
       if (data._consoleLogs) {
         console.group('OpenAI Processing Debug Logs');
         
+        if (data._consoleLogs.student_tasks) {
+          console.log('student task:', data._consoleLogs.student_tasks);
+        }
+        
+        if (data._consoleLogs.student_learnings) {
+          console.log('student learnings:', data._consoleLogs.student_learnings);
+        }
+        
         if (data._consoleLogs.combined_text) {
-          console.log('step 1 fetched data from database:', data._consoleLogs.combined_text);
+          console.log('combined text:', data._consoleLogs.combined_text);
         }
         
         if (data._consoleLogs.cleaned_text) {
-          console.log('step 2 cleaned text:', data._consoleLogs.cleaned_text);
+          console.log('cleaned text:', data._consoleLogs.cleaned_text);
         }
         
-        if (data._consoleLogs.summary_prompt) {
-          console.log('step 3 summary prompt:', data._consoleLogs.summary_prompt);
+        if (data._consoleLogs.summarize_result) {
+          console.log('summarize result:', data._consoleLogs.summarize_result);
         }
         
-        if (data._consoleLogs.summary_openai_response) {
-          console.log('step 4 summary openai response:', data._consoleLogs.summary_openai_response);
+        if (data._consoleLogs.response_result) {
+          console.log('response result:', data._consoleLogs.response_result);
         }
         
-        if (data._consoleLogs.po_analysis_cleaned_text) {
-          console.log('step 5 po analysis cleaned text:', data._consoleLogs.po_analysis_cleaned_text);
-        }
-        
-        if (data._consoleLogs.po_analysis_prompt) {
-          console.log('step 6 po analysis prompt:', data._consoleLogs.po_analysis_prompt);
-        }
-        
-        if (data._consoleLogs.po_analysis_openai_response) {
-          console.log('step 7 po analysis openai response:', data._consoleLogs.po_analysis_openai_response);
-        }
-        
-        if (data._consoleLogs.po_extraction_results) {
-          console.log('step 8 po extraction results:', data._consoleLogs.po_extraction_results);
+        if (data._consoleLogs.pos_hit_only) {
+          console.log('POs hit from open AI:', data._consoleLogs.pos_hit_only);
         }
         
         console.groupEnd();

@@ -112,6 +112,8 @@ class CoordinatorSummaryController extends Controller
 
         // Initialize debug data array for browser console logging
         $debugData = [
+            'student_tasks' => $activities,
+            'student_learnings' => $learnings,
             'combined_text' => $combined,
         ];
         

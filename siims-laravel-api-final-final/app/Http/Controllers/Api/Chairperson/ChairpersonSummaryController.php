@@ -126,6 +126,10 @@ class ChairpersonSummaryController extends Controller
         $activities = $extracted['activities'];
         $learnings = $extracted['learnings'];
         
+        // Store tasks and learnings for browser console logging
+        $debugData['student_tasks'] = $activities;
+        $debugData['student_learnings'] = $learnings;
+        
         // Log summary for monitoring
         \Log::info('ChairSummary: Extracted data', [
             'activities_count' => count($activities),
