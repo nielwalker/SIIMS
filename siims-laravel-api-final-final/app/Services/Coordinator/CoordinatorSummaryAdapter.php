@@ -35,15 +35,22 @@ class CoordinatorSummaryAdapter
      * @param int|null $week Week number (optional, passed directly from controller)
      * @return array{ summary: string, keywordScores: array<int,int>, usedGPT: bool }
      */
-    public function analyze(string $text, ?string $analysisType, bool $useGPT = true, ?int $week = null): array
+    public function analyze(string $text, ?string $analysisType, bool $useGPT = true, ?int $week = null, array &$debugData = []): array
     {
         // Use OpenAIService for consistent text cleaning
         $clean = $this->openAIService->cleanText($text);
+        
+        // Store cleaned text for browser console logging
+        $debugData['cleaned_text'] = $clean;
+        
         // Use week number if provided, otherwise try to extract from text
         $weekNumber = $week;
         if ($weekNumber === null && preg_match('/^\[WEEK\s+(\d+)\]\s*/i', $clean, $m)) {
             $weekNumber = (int)($m[1] ?? 0) ?: null;
             $clean = trim(preg_replace('/^\[WEEK\s+\d+\]\s*/i', '', $clean));
+            
+            // Update cleaned text after week extraction
+            $debugData['cleaned_text'] = $clean;
         }
 
         $keywordSets = [
@@ -99,6 +106,10 @@ class CoordinatorSummaryAdapter
                 
                 // Build prompt for coordinator
                 $prompt = $this->coordinatorPromptBuilder->buildPrompt($activities, $learnings, '', $promptType);
+                
+                // Store prompt for browser console logging
+                $debugData['summary_prompt'] = $prompt;
+                
                 // Increased timeout for better responses
                 $response = $this->openAIService->call($prompt, [
                     'model' => 'gpt-4o-mini',
@@ -106,6 +117,9 @@ class CoordinatorSummaryAdapter
                     'temperature' => 0.6,
                     'timeout' => 120,
                 ]);
+                
+                // Store OpenAI response for browser console logging
+                $debugData['summary_openai_response'] = $response;
                 
                 if ($response['success'] && $response['content']) {
                     $summary = $this->openAIService->cleanText($response['content']);
@@ -162,11 +176,18 @@ class CoordinatorSummaryAdapter
             'keyword_scores' => $scores
         ]);
 
-        return [
+        $result = [
             'summary' => $summary,
             'keywordScores' => $scores,
             'usedGPT' => $usedGPT,
         ];
+        
+        // Include debug data in result
+        if (!empty($debugData)) {
+            $result['_debug'] = $debugData;
+        }
+        
+        return $result;
     }
 }
 

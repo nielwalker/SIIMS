@@ -237,10 +237,14 @@ class ChairSummaryAdapter
         return $title.': '.implode('; ', $lines);
     }
 
-    public function summarize(string $text, ?int $week, bool $useGPT = false, array $activities = [], array $learnings = []): array
+    public function summarize(string $text, ?int $week, bool $useGPT = false, array $activities = [], array $learnings = [], array &$debugData = []): array
     {
         // Use OpenAIService for consistent text cleaning
         $clean = $this->openAIService->cleanText($text);
+        
+        // Store cleaned text for browser console logging
+        $debugData['cleaned_text'] = $clean;
+        
         $summary = '';
         $usedGPT = false;
 
@@ -250,12 +254,19 @@ class ChairSummaryAdapter
                 // Determine prompt type: overall if week is null/0, otherwise weekly
                 $promptType = (!empty($week) && $week > 0) ? 'chair_week' : 'overall_summary';
                 $prompt = $this->promptBuilder->buildSummaryPrompt($activities, $learnings, '', $promptType);
+                
+                // Store prompt for browser console logging
+                $debugData['summary_prompt'] = $prompt;
+                
                 $response = $this->openAIService->call($prompt, [
                     'model' => 'gpt-4o-mini',
                     'max_tokens' => 4000, // Increased for better, more complete responses
                     'temperature' => 0.2,
                     'timeout' => 120, // Increased timeout to 2 minutes for better responses
                 ]);
+                
+                // Store OpenAI response for browser console logging
+                $debugData['summary_openai_response'] = $response;
                 
                 if ($response['success'] && $response['content']) {
                     $summary = $this->openAIService->cleanText($response['content']);
@@ -289,11 +300,17 @@ class ChairSummaryAdapter
         if ($useGPT && !empty($clean)) {
             try {
                 $chairpersonSummaryService = app(ChairpersonSummaryService::class);
-                $result = $chairpersonSummaryService->generateSummaryWithPOAnalysis($clean, $week, $activities, $learnings);
+                $result = $chairpersonSummaryService->generateSummaryWithPOAnalysis($clean, $week, $activities, $learnings, $debugData);
 
                 // Use OpenAI-generated summary (already set above)
                 if (isset($result['summary'])) {
                     $result['summary'] = $summary; // Use OpenAI summary
+                }
+                
+                // Merge debug data from PO analysis service
+                if (isset($result['_debug'])) {
+                    $debugData = array_merge($debugData, $result['_debug']);
+                    unset($result['_debug']);
                 }
 
                 // If OpenAI was used successfully for PO analysis, return the merged result
@@ -319,6 +336,8 @@ class ChairSummaryAdapter
                         'recommendations_count' => count($result['recommendations'] ?? [])
                     ]);
                     
+                    // Include debug data in result
+                    $result['_debug'] = $debugData;
                     return $result;
                 }
             } catch (\Throwable $e) {

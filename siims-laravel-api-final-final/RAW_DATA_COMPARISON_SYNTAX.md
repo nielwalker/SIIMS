@@ -14,6 +14,8 @@ The comparison process involves:
 
 ## 1. Fetch Raw Data from Database
 
+**Explanation:** This is the first step in the comparison process. We need to retrieve the original data that was stored in the database before any AI processing. This raw data serves as the "ground truth" that we will compare against the AI-generated summary. We extract two main types of content: activities (tasks performed) and learnings (knowledge gained) from weekly entries. This step ensures we have the source material needed for accurate evaluation.
+
 ### Example: Coordinator Controller
 
 ```php

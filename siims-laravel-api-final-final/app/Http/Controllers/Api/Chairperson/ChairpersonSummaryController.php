@@ -164,6 +164,9 @@ class ChairpersonSummaryController extends Controller
         
         $cached = $cacheQuery->first();
         
+        // Initialize debug data array (will be populated if generating new analysis)
+        $debugData = [];
+        
         if ($cached) {
             // Use cached results - consistent across refreshes
             \Log::info('ChairSummary: Using cached PO analysis for hash: ' . substr($dataHash, 0, 8) . '...');
@@ -254,6 +257,9 @@ class ChairpersonSummaryController extends Controller
             $combined = $this->convertToThirdPerson($combined, 'the student', 'the students');
 
             \Log::info('ChairSummary: Combined text length: ' . strlen($combined));
+            
+            // Store combined text for browser console logging
+            $debugData['combined_text'] = $combined;
             \Log::info('ChairSummary: Activities count: ' . count($activities));
             \Log::info('ChairSummary: Learnings count: ' . count($learnings));
             
@@ -296,7 +302,13 @@ class ChairpersonSummaryController extends Controller
                 ]);
             }
             
-            $result = $adapter->summarize($combined, $week, $useGPT, $limitedActivities, $limitedLearnings);
+            $result = $adapter->summarize($combined, $week, $useGPT, $limitedActivities, $limitedLearnings, $debugData);
+            
+            // Merge debug data from adapter into result
+            if (isset($result['_debug'])) {
+                $debugData = array_merge($debugData ?? [], $result['_debug']);
+                unset($result['_debug']); // Remove from result, will add back at end
+            }
             
             $executionTime = microtime(true) - $startTime;
             \Log::info('ChairSummary: OpenAI execution time', [
@@ -519,6 +531,11 @@ class ChairpersonSummaryController extends Controller
         // This ensures the frontend gets all the data even though OpenAI only processed a subset
         $result['activities'] = $activities; // Always use full activities
         $result['learnings'] = $learnings;   // Always use full learnings
+        
+        // Add debug data for browser console logging
+        if (isset($debugData)) {
+            $result['_consoleLogs'] = $debugData;
+        }
 
         // CRITICAL: Ensure recommendations are always included in the response
         // If recommendations are missing or empty, set to empty array to ensure frontend receives the field

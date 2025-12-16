@@ -37,7 +37,8 @@ class ChairpersonSummaryService
         string $text,
         ?int $week = null,
         array $activities = [],
-        array $learnings = []
+        array $learnings = [],
+        array &$debugData = []
     ): array {
         // Check if OpenAI is available
         if (!$this->openAIService->isAvailable()) {
@@ -46,6 +47,10 @@ class ChairpersonSummaryService
 
         // Use OpenAIService for consistent text cleaning
         $clean = $this->openAIService->cleanText($text);
+        
+        // Store cleaned text for browser console logging
+        $debugData['po_analysis_cleaned_text'] = $clean;
+        
         if (empty($clean)) {
             return $this->getUnavailableResponse();
         }
@@ -53,6 +58,9 @@ class ChairpersonSummaryService
         try {
             // Build prompt using ChairpersonPOPromptBuilder
             $prompt = $this->promptBuilder->buildPOAnalysisPrompt($clean, $week, $activities, $learnings);
+            
+            // Store PO analysis prompt for browser console logging
+            $debugData['po_analysis_prompt'] = $prompt;
             
             // Call OpenAI API with increased timeout
             $response = $this->openAIService->call($prompt, [
@@ -62,6 +70,9 @@ class ChairpersonSummaryService
                 'timeout' => 120, // Increased timeout to 2 minutes for better responses
                 'top_p' => 0.95,
             ]);
+            
+            // Store PO analysis OpenAI response for browser console logging
+            $debugData['po_analysis_openai_response'] = $response;
 
             if ($response['success'] && $response['content']) {
                 $rawContent = $response['content'];
@@ -76,6 +87,13 @@ class ChairpersonSummaryService
                 $pos = $this->extractPosArrays($rawContent);
                 $poTypes = $this->extractPoHitTypes($rawContent);
                 $recommendations = $this->extractRecommendations($rawContent);
+                
+                // Store extracted results for browser console logging
+                $debugData['po_extraction_results'] = [
+                    'pos' => $pos,
+                    'poTypes' => $poTypes,
+                    'recommendations' => $recommendations,
+                ];
                 
                 // Log extracted recommendations for debugging
                 Log::info('ChairpersonSummaryService: Extracted recommendations', [
@@ -119,7 +137,7 @@ class ChairpersonSummaryService
                 // Validate that OpenAI generated recommendations for all not met POs
                 $this->validateRecommendationsFromOpenAI($recommendations, $notHitPOs);
                 
-                return [
+                $result = [
                     'summary' => '', // Summary is generated separately, not here
                     'usedGPT' => true,
                     'posHitExplanation' => $this->formatPosExplanation('Program Outcomes Achieved', $pos['hit']),
@@ -130,6 +148,11 @@ class ChairpersonSummaryService
                     'pos_hit' => $pos['hit'],
                     'pos_not_hit' => $pos['notHit'],
                 ];
+                
+                // Include debug data in result
+                $result['_debug'] = $debugData;
+                
+                return $result;
             } else {
                 Log::error('OpenAI API request failed in ChairpersonSummaryService', [
                     'error' => $response['error'] ?? 'Unknown error'

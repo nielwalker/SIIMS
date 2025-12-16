@@ -456,6 +456,60 @@ export default function ChairpersonSummary({ coordinatorId, sectionId = null, we
         if (resp.ok) {
           const data = await resp.json();
           
+          // Log debug data to browser console for OpenAI debugging
+          if (data._consoleLogs) {
+            console.group('🔍 OpenAI Processing Debug Logs');
+            
+            // Step 1: Combined text
+            if (data._consoleLogs.combined_text) {
+              console.log('📝 Step 1: Combined Text', data._consoleLogs.combined_text);
+            }
+            
+            // Step 1.5: Cleaned text
+            if (data._consoleLogs.cleaned_text) {
+              console.log('✨ Step 1.5: Cleaned Text', data._consoleLogs.cleaned_text);
+            }
+            
+            // Step 2: Summary prompt
+            if (data._consoleLogs.summary_prompt) {
+              console.log('📝 Step 2: Summary Prompt', data._consoleLogs.summary_prompt);
+            }
+            
+            // Step 3: Summary OpenAI response
+            if (data._consoleLogs.summary_openai_response) {
+              console.log('🤖 Step 3: Summary OpenAI Response', data._consoleLogs.summary_openai_response);
+            }
+            
+            // Step 4: PO Analysis cleaned text
+            if (data._consoleLogs.po_analysis_cleaned_text) {
+              console.log('✨ Step 4: PO Analysis Cleaned Text', data._consoleLogs.po_analysis_cleaned_text);
+            }
+            
+            // Step 5: PO Analysis prompt
+            if (data._consoleLogs.po_analysis_prompt) {
+              console.log('📝 Step 5: PO Analysis Prompt', data._consoleLogs.po_analysis_prompt);
+            }
+            
+            // Step 6: PO Analysis OpenAI response
+            if (data._consoleLogs.po_analysis_openai_response) {
+              console.log('🤖 Step 6: PO Analysis OpenAI Response', data._consoleLogs.po_analysis_openai_response);
+            }
+            
+            // Step 7: PO Extraction results
+            if (data._consoleLogs.po_extraction_results) {
+              console.group('📊 Step 7: PO Extraction Results');
+              console.log('POS (Hit/Not Hit):', data._consoleLogs.po_extraction_results.pos);
+              console.log('PO Types (Word/Context):', data._consoleLogs.po_extraction_results.poTypes);
+              console.log('Recommendations:', data._consoleLogs.po_extraction_results.recommendations);
+              console.groupEnd();
+            }
+            
+            console.groupEnd();
+            
+            // Remove debug data from response to avoid clutter
+            delete data._consoleLogs;
+          }
+          
           // Check if OpenAI is unavailable
           if (data?.openai_unavailable || data?.error === 'OpenAI is not available right now') {
             setError('OpenAI is not available right now');

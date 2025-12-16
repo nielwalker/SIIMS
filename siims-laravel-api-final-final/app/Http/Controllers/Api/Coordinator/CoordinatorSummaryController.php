@@ -110,8 +110,12 @@ class CoordinatorSummaryController extends Controller
         // Convert to third-person for consistency
         $combined = $this->convertToThirdPerson($combined);
 
+        // Initialize debug data array for browser console logging
+        $debugData = [
+            'combined_text' => $combined,
+        ];
         
-        $summaryResult = $adapter->analyze($combined, $analysisType, $useGPT, $week);
+        $summaryResult = $adapter->analyze($combined, $analysisType, $useGPT, $week, $debugData);
         $summary = $summaryResult['summary'];
         $keywordScores = $summaryResult['keywordScores'] ?? [];
 
@@ -153,7 +157,8 @@ class CoordinatorSummaryController extends Controller
                             $combined, 
                             $week, 
                             $limitedActivities, // Use limited data for OpenAI
-                            $limitedLearnings   // Use limited data for OpenAI
+                            $limitedLearnings,   // Use limited data for OpenAI
+                            $debugData
                         );
                     }
                 } else {
@@ -162,10 +167,21 @@ class CoordinatorSummaryController extends Controller
                         $combined, 
                         $week, 
                         $limitedActivities, // Use limited data for OpenAI
-                        $limitedLearnings   // Use limited data for OpenAI
+                        $limitedLearnings,   // Use limited data for OpenAI
+                        $debugData
                     );
                 }
             }
+        }
+        
+        // Merge debug data from adapter and service
+        if (isset($summaryResult['_debug'])) {
+            $debugData = array_merge($debugData, $summaryResult['_debug']);
+            unset($summaryResult['_debug']);
+        }
+        if (isset($poAnalysisResult['_debug'])) {
+            $debugData = array_merge($debugData, $poAnalysisResult['_debug']);
+            unset($poAnalysisResult['_debug']);
         }
 
         // Check if OpenAI was unavailable for PO analysis
@@ -265,7 +281,8 @@ class CoordinatorSummaryController extends Controller
         $correctedActivities = $poAnalysisResult['corrected_activities'] ?? $activities;
         $correctedLearnings = $poAnalysisResult['corrected_learnings'] ?? $learnings;
         
-        return response()->json([
+        // Add debug data for browser console logging
+        $responseData = [
             'summary' => $summary,
             'keywordScores' => $keywordScores, // From adapter (word-based text mining)
             'usedGPT' => (bool) $summaryResult['usedGPT'],
@@ -282,7 +299,14 @@ class CoordinatorSummaryController extends Controller
             'learnings' => $correctedLearnings,   // Use corrected if available, otherwise original (FULL data)
             'corrected_activities' => $correctedActivities, // Backward compatibility
             'corrected_learnings' => $correctedLearnings,   // Backward compatibility
-        ], 200, [
+        ];
+        
+        // Add debug data for browser console logging
+        if (!empty($debugData)) {
+            $responseData['_consoleLogs'] = $debugData;
+        }
+        
+        return response()->json($responseData, 200, [
             'Access-Control-Allow-Origin' => '*',
             'Access-Control-Allow-Methods' => 'GET, POST, OPTIONS',
             'Access-Control-Allow-Headers' => 'Content-Type, Authorization',
